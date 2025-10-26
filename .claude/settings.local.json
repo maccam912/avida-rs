@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.cse.msu.edu)",
+      "WebFetch(domain:avida-ed.msu.edu)",
+      "WebFetch(domain:homes.cs.washington.edu)",
+      "Bash(cargo build:*)",
+      "Bash(cargo test:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cargo run:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
