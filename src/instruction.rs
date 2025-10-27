@@ -3,48 +3,48 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Instruction {
     // No-operation instructions (a-c)
-    NopA,  // a - no-op, modifies previous instruction or acts as label
-    NopB,  // b - no-op, modifies previous instruction or acts as label
-    NopC,  // c - no-op, modifies previous instruction or acts as label
+    NopA, // a - no-op, modifies previous instruction or acts as label
+    NopB, // b - no-op, modifies previous instruction or acts as label
+    NopC, // c - no-op, modifies previous instruction or acts as label
 
     // Conditional operations (d-e)
-    IfNEqu,    // d - if BX != complement label, execute next
-    IfLess,    // e - if BX < complement, execute next
+    IfNEqu, // d - if BX != complement label, execute next
+    IfLess, // e - if BX < complement, execute next
 
     // Stack operations (f-h)
-    Pop,       // f - pop stack top into BX
-    Push,      // g - push BX onto active stack
-    SwapStk,   // h - toggle between two stacks
+    Pop,     // f - pop stack top into BX
+    Push,    // g - push BX onto active stack
+    SwapStk, // h - toggle between two stacks
 
     // Register operations (i-m)
-    Swap,      // i - exchange BX with complement register
-    ShiftR,    // j - right bit-shift BX (divide by 2)
-    ShiftL,    // k - left bit-shift BX (multiply by 2)
-    Inc,       // l - increment BX
-    Dec,       // m - decrement BX
+    Swap,   // i - exchange BX with complement register
+    ShiftR, // j - right bit-shift BX (divide by 2)
+    ShiftL, // k - left bit-shift BX (multiply by 2)
+    Inc,    // l - increment BX
+    Dec,    // m - decrement BX
 
     // Arithmetic (n-p)
-    Add,       // n - BX = BX + CX
-    Sub,       // o - BX = BX - CX
-    Nand,      // p - BX = BX NAND CX (bitwise)
+    Add,  // n - BX = BX + CX
+    Sub,  // o - BX = BX - CX
+    Nand, // p - BX = BX NAND CX (bitwise)
 
     // I/O (q)
-    IO,        // q - output BX, check tasks, input new value
+    IO, // q - output BX, check tasks, input new value
 
     // Genome management (r-u)
-    HAlloc,    // r - allocate memory for offspring
-    HDivide,   // s - divide organism, create offspring
-    HCopy,     // t - copy instruction from read-head to write-head
-    HSearch,   // u - find complement label template
+    HAlloc,  // r - allocate memory for offspring
+    HDivide, // s - divide organism, create offspring
+    HCopy,   // t - copy instruction from read-head to write-head
+    HSearch, // u - find complement label template
 
     // Head movement (v-x)
-    MovHead,   // v - jump IP to flow-head position
-    JmpHead,   // w - move IP by CX register amount
-    GetHead,   // x - copy IP position to CX register
+    MovHead, // v - jump IP to flow-head position
+    JmpHead, // w - move IP by CX register amount
+    GetHead, // x - copy IP position to CX register
 
     // Flow control (y-z)
-    IfLabel,   // y - test if complement label was most recently copied
-    SetFlow,   // z - move flow-head to position in CX register
+    IfLabel, // y - test if complement label was most recently copied
+    SetFlow, // z - move flow-head to position in CX register
 }
 
 impl Instruction {
@@ -128,7 +128,10 @@ impl Instruction {
 
     /// Check if this is a nop instruction
     pub fn is_nop(self) -> bool {
-        matches!(self, Instruction::NopA | Instruction::NopB | Instruction::NopC)
+        matches!(
+            self,
+            Instruction::NopA | Instruction::NopB | Instruction::NopC
+        )
     }
 
     /// Get the register index for this nop (used for register selection)
@@ -146,8 +149,10 @@ impl Instruction {
 /// Parse a genome string into a vector of instructions
 pub fn parse_genome(s: &str) -> Result<Vec<Instruction>, String> {
     s.chars()
-        .map(|c| Instruction::from_char(c)
-            .ok_or_else(|| format!("Invalid instruction character: '{}'", c)))
+        .map(|c| {
+            Instruction::from_char(c)
+                .ok_or_else(|| format!("Invalid instruction character: '{}'", c))
+        })
         .collect()
 }
 
@@ -280,7 +285,9 @@ mod tests {
     fn test_parse_genome_invalid() {
         let result = parse_genome("abc123");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid instruction character"));
+        assert!(result
+            .unwrap_err()
+            .contains("Invalid instruction character"));
     }
 
     #[test]
@@ -290,10 +297,10 @@ mod tests {
         assert!(result.is_ok());
         let genome = result.unwrap();
         assert_eq!(genome.len(), 50);
-        assert_eq!(genome[0], Instruction::HAlloc);      // r
-        assert_eq!(genome[1], Instruction::HSearch);     // u
-        assert_eq!(genome[2], Instruction::HCopy);       // t
-        assert_eq!(genome[3], Instruction::IfLabel);     // y
+        assert_eq!(genome[0], Instruction::HAlloc); // r
+        assert_eq!(genome[1], Instruction::HSearch); // u
+        assert_eq!(genome[2], Instruction::HCopy); // t
+        assert_eq!(genome[3], Instruction::IfLabel); // y
     }
 
     #[test]

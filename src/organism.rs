@@ -49,14 +49,14 @@ impl Organism {
         Self {
             genome,
             cpu: CPU::new(),
-            merit: 1.0,  // Base merit
+            merit: 1.0, // Base merit
             age: 0,
             generation: 0,
             offspring_count: 0,
             tasks_completed: 0,
             child_genome: None,
             child_copy_progress: 0,
-            gestation_time: genome_size as u64 * 2,  // Rough estimate
+            gestation_time: genome_size as u64 * 2, // Rough estimate
             cycles_this_gestation: 0,
             position: None,
         }
@@ -77,8 +77,8 @@ impl Organism {
 
         let genome_str = "rutyabsvacccccccccccccccccccccccccccccccccccccccbc";
 
-        let genome = crate::instruction::parse_genome(genome_str)
-            .expect("Ancestor genome should be valid");
+        let genome =
+            crate::instruction::parse_genome(genome_str).expect("Ancestor genome should be valid");
         Self::new(genome)
     }
 
@@ -87,8 +87,8 @@ impl Organism {
     #[allow(dead_code)]
     pub fn ancestor_avida_ed() -> Self {
         let genome_str = "wzcagcccccccccccccccccccccccccccccccccccczvfcaxgab";
-        let genome = crate::instruction::parse_genome(genome_str)
-            .expect("Ancestor genome should be valid");
+        let genome =
+            crate::instruction::parse_genome(genome_str).expect("Ancestor genome should be valid");
         Self::new(genome)
     }
 
@@ -148,15 +148,14 @@ impl Organism {
         }
 
         if let Some(inst) = self.current_instruction() {
-            // Execute the instruction
-            match inst {
-                Instruction::NopA | Instruction::NopB | Instruction::NopC => {
-                    // No-ops do nothing on their own
-                }
-                _ => {
-                    // Other instructions handled elsewhere
-                    // This is a placeholder - full execution logic goes in execute.rs
-                }
+            if matches!(
+                inst,
+                Instruction::NopA | Instruction::NopB | Instruction::NopC
+            ) {
+                // No-ops do nothing on their own
+            } else {
+                // Other instructions handled elsewhere
+                // This is a placeholder - full execution logic goes in execute.rs
             }
         }
 
@@ -164,7 +163,7 @@ impl Organism {
         self.age += 1;
         self.cycles_this_gestation += 1;
 
-        false  // Not ready to divide yet
+        false // Not ready to divide yet
     }
 
     /// Advance the instruction pointer with circular wrapping
@@ -212,7 +211,8 @@ impl Organism {
             if self.cpu.read_head >= self.genome.len() {
                 crate::debug::log_event(format!(
                     "[ERROR] h-copy read_head out of bounds! rh:{} genome_len:{}",
-                    self.cpu.read_head, self.genome.len()
+                    self.cpu.read_head,
+                    self.genome.len()
                 ));
                 return None;
             }
@@ -235,7 +235,8 @@ impl Organism {
             if self.cpu.write_head < child.len() {
                 child[self.cpu.write_head] = inst_to_write;
 
-                let copies = crate::debug::COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let copies =
+                    crate::debug::COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 // Log first few copies and every 50th copy
                 if copies < 10 || copies % 50 == 0 {
                     crate::debug::log_event(format!(
@@ -252,7 +253,8 @@ impl Organism {
             } else {
                 crate::debug::log_event(format!(
                     "[WARN] h-copy write_head out of bounds! wh:{} child_len:{}",
-                    self.cpu.write_head, child.len()
+                    self.cpu.write_head,
+                    child.len()
                 ));
             }
 
@@ -346,7 +348,7 @@ impl Organism {
         // Ensure minimum genome size
         if child_genome.is_empty() {
             child_genome.push(Instruction::NopC);
-            crate::debug::log_event("[WARN] Child genome was empty after mutations, added NopC".to_string());
+            crate::debug::log_event("[WARN] Child genome was empty after mutations, added NopC");
         }
 
         let final_size = child_genome.len();
@@ -354,7 +356,7 @@ impl Organism {
         // Create offspring
         let mut offspring = Organism::new(child_genome);
         offspring.generation = self.generation + 1;
-        offspring.merit = 1.0;  // Start with base merit (task bonuses not inherited)
+        offspring.merit = 1.0; // Start with base merit (task bonuses not inherited)
 
         let divisions = crate::debug::DIVISIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         // Log first few divisions and every 10th
@@ -381,7 +383,7 @@ impl Organism {
         self.cycles_this_gestation = 0;
 
         // Reset CPU state for next replication cycle
-        self.cpu.ip = 0;  // Reset to start of genome to execute h-alloc again
+        self.cpu.ip = 0; // Reset to start of genome to execute h-alloc again
         self.cpu.read_head = 0;
         self.cpu.write_head = 0;
         self.cpu.last_copied_label.clear();
@@ -479,7 +481,7 @@ mod tests {
         org.cpu.read_head = 0;
         org.cpu.write_head = 0;
 
-        let copied = org.copy_instruction(0.0);  // No mutations
+        let copied = org.copy_instruction(0.0); // No mutations
         assert!(copied.is_some());
         assert_eq!(org.cpu.read_head, 1);
         assert_eq!(org.cpu.write_head, 1);
@@ -495,7 +497,10 @@ mod tests {
 
         for _ in 0..genome_len {
             let copied = org.copy_instruction(0.0);
-            assert!(copied.is_some(), "copy_instruction returned None before genome copied");
+            assert!(
+                copied.is_some(),
+                "copy_instruction returned None before genome copied"
+            );
         }
 
         assert!(org.child_genome.is_some());
@@ -527,7 +532,10 @@ mod tests {
                 break org.divide(0.0, 0.0);
             }
 
-            assert!(steps <= 2000, "Ancestor failed to divide within 2000 instructions");
+            assert!(
+                steps <= 2000,
+                "Ancestor failed to divide within 2000 instructions"
+            );
         };
 
         let offspring = offspring.expect("division should yield offspring");
@@ -703,7 +711,11 @@ mod tests {
 
     #[test]
     fn test_genome_string_conversion() {
-        let genome = vec![Instruction::HAlloc, Instruction::HCopy, Instruction::HDivide];
+        let genome = vec![
+            Instruction::HAlloc,
+            Instruction::HCopy,
+            Instruction::HDivide,
+        ];
         let org = Organism::new(genome);
         assert_eq!(org.genome_string(), "rts");
     }
@@ -743,7 +755,10 @@ mod tests {
                 }
             }
         }
-        assert!(mutation_occurred, "With 100% mutation rate, at least one mutation should occur");
+        assert!(
+            mutation_occurred,
+            "With 100% mutation rate, at least one mutation should occur"
+        );
     }
 
     #[test]
@@ -756,8 +771,8 @@ mod tests {
         }
 
         let offspring = org.divide(1.0, 0.0).unwrap(); // 100% insertion rate
-        // With canonical Avida mutation: 100% rate means ONE insertion will occur
-        // Genome should be exactly 1 instruction larger (50 + 1 = 51)
+                                                       // With canonical Avida mutation: 100% rate means ONE insertion will occur
+                                                       // Genome should be exactly 1 instruction larger (50 + 1 = 51)
         assert_eq!(offspring.genome_size(), 51);
     }
 
@@ -771,8 +786,8 @@ mod tests {
         }
 
         let offspring = org.divide(0.0, 1.0).unwrap(); // 100% deletion rate
-        // With canonical Avida mutation: 100% rate means ONE deletion will occur
-        // Genome should be exactly 1 instruction smaller (50 - 1 = 49)
+                                                       // With canonical Avida mutation: 100% rate means ONE deletion will occur
+                                                       // Genome should be exactly 1 instruction smaller (50 - 1 = 49)
         assert_eq!(offspring.genome_size(), 49);
     }
 
@@ -786,7 +801,7 @@ mod tests {
         }
 
         let offspring = org.divide(0.0, 1.0).unwrap(); // 100% deletion rate
-        // If genome becomes empty after deletion, NopC should be added
+                                                       // If genome becomes empty after deletion, NopC should be added
         assert_eq!(offspring.genome_size(), 1);
         assert_eq!(offspring.genome[0], Instruction::NopC);
     }
@@ -828,7 +843,11 @@ mod tests {
 
         // With 0.05 rates, about 90% should be unchanged (1-0.05-0.05 = 0.9)
         // Allow some variance, expect at least 75% unchanged
-        assert!(unchanged_count >= 75, "Expected most genomes unchanged with 0.05 rates, got {}/100", unchanged_count);
+        assert!(
+            unchanged_count >= 75,
+            "Expected most genomes unchanged with 0.05 rates, got {}/100",
+            unchanged_count
+        );
     }
 
     #[test]
@@ -864,7 +883,7 @@ mod tests {
     #[test]
     fn test_fitness_with_high_merit() {
         let mut org = Organism::ancestor();
-        org.merit = 16.0;  // As if completed XOR task
+        org.merit = 16.0; // As if completed XOR task
         org.gestation_time = 100;
 
         // High merit = high fitness = faster reproduction

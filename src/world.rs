@@ -1,11 +1,11 @@
 use crate::execute::execute_instruction;
 use crate::organism::Organism;
 use crate::tasks::{TaskDetector, TaskEnvironment};
-use std::sync::atomic::{AtomicU32, Ordering};
-use rand::SeedableRng;
 use rand::rngs::SmallRng;
+use rand::SeedableRng;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 const WORLD_WIDTH: usize = 60;
 const WORLD_HEIGHT: usize = 60;
@@ -57,18 +57,18 @@ impl World {
             grid,
             task_detectors,
             task_env: TaskEnvironment::default_logic9(),
-            copy_mutation_rate: 0.0075,  // Default Avida copy mutation rate (0.75%)
-            insertion_rate: 0.0,         // Insertions disabled during copy (Avida default)
-            deletion_rate: 0.0,          // Deletions disabled during copy (Avida default)
-            death_method: 2,             // Avida default: age limit × genome length
-            age_limit: 20,               // Avida default: 20× genome length
-            prefer_empty: true,          // Avida default: prefer empty cells
+            copy_mutation_rate: 0.0075, // Default Avida copy mutation rate (0.75%)
+            insertion_rate: 0.0,        // Insertions disabled during copy (Avida default)
+            deletion_rate: 0.0,         // Deletions disabled during copy (Avida default)
+            death_method: 2,            // Avida default: age limit × genome length
+            age_limit: 20,              // Avida default: 20× genome length
+            prefer_empty: true,         // Avida default: prefer empty cells
             total_updates: 0,
             total_organisms: 0,
             total_births: 0,
             total_deaths: 0,
             population_size: 0,
-            rng: SmallRng::from_entropy(),  // Faster than thread_rng
+            rng: SmallRng::from_entropy(), // Faster than thread_rng
         }
     }
 
@@ -85,8 +85,10 @@ impl World {
 
     /// Wrap coordinates for toroidal topology
     fn wrap_coord(&self, x: isize, y: isize) -> (usize, usize) {
-        let wx = ((x % WORLD_WIDTH as isize + WORLD_WIDTH as isize) % WORLD_WIDTH as isize) as usize;
-        let wy = ((y % WORLD_HEIGHT as isize + WORLD_HEIGHT as isize) % WORLD_HEIGHT as isize) as usize;
+        let wx =
+            ((x % WORLD_WIDTH as isize + WORLD_WIDTH as isize) % WORLD_WIDTH as isize) as usize;
+        let wy =
+            ((y % WORLD_HEIGHT as isize + WORLD_HEIGHT as isize) % WORLD_HEIGHT as isize) as usize;
         (wx, wy)
     }
 
@@ -170,7 +172,11 @@ impl World {
                     if log_index <= 10 {
                         crate::debug::log_event(format!(
                             "[PLACEMENT #{}] parent:({},{}) -> offspring:({},{}) EMPTY dx:{} dy:{}",
-                            log_index, parent_x, parent_y, nx, ny,
+                            log_index,
+                            parent_x,
+                            parent_y,
+                            nx,
+                            ny,
                             *nx as isize - parent_x as isize,
                             *ny as isize - parent_y as isize
                         ));
@@ -196,7 +202,10 @@ impl World {
                 let is_empty = self.grid[idx].is_none();
                 crate::debug::log_event(format!(
                     "[PLACEMENT] parent:({},{}) -> offspring:({},{}) {}",
-                    parent_x, parent_y, nx, ny,
+                    parent_x,
+                    parent_y,
+                    nx,
+                    ny,
                     if is_empty { "EMPTY" } else { "REPLACING" }
                 ));
                 return Some((nx, ny));
@@ -215,11 +224,15 @@ impl World {
 
         // Calculate total fitness (parallel on native, sequential on wasm) - this is the key to selection pressure!
         #[cfg(not(target_arch = "wasm32"))]
-        let total_fitness: f64 = self.grid.par_iter()
+        let total_fitness: f64 = self
+            .grid
+            .par_iter()
             .filter_map(|cell| cell.as_ref().map(|org| org.fitness()))
             .sum();
         #[cfg(target_arch = "wasm32")]
-        let total_fitness: f64 = self.grid.iter()
+        let total_fitness: f64 = self
+            .grid
+            .iter()
             .filter_map(|cell| cell.as_ref().map(|org| org.fitness()))
             .sum();
 
@@ -270,16 +283,16 @@ impl World {
             // Check for age-based death (Avida DEATH_METHOD)
             if let Some(org) = &self.grid[idx] {
                 let should_die = match self.death_method {
-                    0 => false,  // No age-based death
-                    1 => org.age >= self.age_limit,  // Fixed age limit
-                    2 => org.age >= (org.genome.len() as u64 * self.age_limit),  // Age limit × genome length
+                    0 => false,                                                 // No age-based death
+                    1 => org.age >= self.age_limit,                             // Fixed age limit
+                    2 => org.age >= (org.genome.len() as u64 * self.age_limit), // Age limit × genome length
                     _ => false,
                 };
 
                 if should_die {
                     self.grid[idx] = None;
                     self.total_deaths += 1;
-                    continue;  // Skip to next organism
+                    continue; // Skip to next organism
                 }
             }
 
@@ -290,7 +303,7 @@ impl World {
                 let cycles = (total_cycles_per_update * fitness_fraction).max(1.0) as u32;
 
                 // Execute cycles with safety limit to detect infinite loops
-                let max_cycles_per_organism = 500;  // Safety limit
+                let max_cycles_per_organism = 500; // Safety limit
                 let actual_cycles = cycles.min(max_cycles_per_organism);
 
                 if cycles > max_cycles_per_organism {
@@ -303,18 +316,14 @@ impl World {
                 for cycle_num in 0..actual_cycles {
                     // Need to borrow mutably, so temporarily take organism
                     let idx = self.grid_index(x, y);
-                    if let (Some(mut org), Some(mut detector)) = (
-                        self.grid[idx].take(),
-                        self.task_detectors[idx].take()
-                    ) {
+                    if let (Some(mut org), Some(mut detector)) =
+                        (self.grid[idx].take(), self.task_detectors[idx].take())
+                    {
                         // Detect potential infinite loops (organism stuck at same IP)
                         let ip_before = org.cpu.ip;
 
-                        let (should_divide, completed_task) = execute_instruction(
-                            &mut org,
-                            &mut detector,
-                            self.copy_mutation_rate
-                        );
+                        let (should_divide, completed_task) =
+                            execute_instruction(&mut org, &mut detector, self.copy_mutation_rate);
 
                         // Check if IP is advancing (not stuck in infinite loop)
                         if cycle_num > 100 && org.cpu.ip == ip_before {
@@ -332,17 +341,19 @@ impl World {
 
                         if should_divide {
                             // Attempt division
-                            if let Some(offspring) = org.divide(self.insertion_rate, self.deletion_rate) {
+                            if let Some(offspring) =
+                                org.divide(self.insertion_rate, self.deletion_rate)
+                            {
                                 // Debug first few offspring genomes
                                 static OFFSPRING_LOG: AtomicU32 = AtomicU32::new(0);
                                 let log_index = OFFSPRING_LOG.fetch_add(1, Ordering::Relaxed) + 1;
                                 if log_index <= 3 {
-                                        crate::debug::log_event(format!(
-                                            "[OFFSPRING #{}] size:{} genome:{}",
-                                            log_index,
-                                            offspring.genome_size(),
-                                            offspring.genome_string()
-                                        ));
+                                    crate::debug::log_event(format!(
+                                        "[OFFSPRING #{}] size:{} genome:{}",
+                                        log_index,
+                                        offspring.genome_size(),
+                                        offspring.genome_string()
+                                    ));
                                 }
 
                                 if let Some((birth_x, birth_y)) = self.find_birth_location(x, y) {
@@ -405,23 +416,20 @@ impl World {
     /// Count current population (parallel)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn count_population(&self) -> usize {
-        self.grid.par_iter()
-            .filter(|cell| cell.is_some())
-            .count()
+        self.grid.par_iter().filter(|cell| cell.is_some()).count()
     }
 
     /// Count current population (sequential on wasm)
     #[cfg(target_arch = "wasm32")]
     pub fn count_population(&self) -> usize {
-        self.grid.iter()
-            .filter(|cell| cell.is_some())
-            .count()
+        self.grid.iter().filter(|cell| cell.is_some()).count()
     }
 
     /// Get statistics about tasks completed (parallel)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn task_statistics(&self) -> [usize; 9] {
-        self.grid.par_iter()
+        self.grid
+            .par_iter()
             .filter_map(|cell| cell.as_ref())
             .fold(
                 || [0usize; 9],
@@ -432,7 +440,7 @@ impl World {
                         }
                     }
                     acc
-                }
+                },
             )
             .reduce(
                 || [0usize; 9],
@@ -441,7 +449,7 @@ impl World {
                         acc[i] += counts[i];
                     }
                     acc
-                }
+                },
             )
     }
 
@@ -462,13 +470,12 @@ impl World {
     /// Get average genome size (parallel)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn average_genome_size(&self) -> f64 {
-        let (total, count) = self.grid.par_iter()
+        let (total, count) = self
+            .grid
+            .par_iter()
             .filter_map(|cell| cell.as_ref())
             .map(|org| (org.genome_size(), 1))
-            .reduce(
-                || (0, 0),
-                |acc, val| (acc.0 + val.0, acc.1 + val.1)
-            );
+            .reduce(|| (0, 0), |acc, val| (acc.0 + val.0, acc.1 + val.1));
 
         if count > 0 {
             total as f64 / count as f64
@@ -497,13 +504,12 @@ impl World {
     /// Get average merit (parallel)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn average_merit(&self) -> f64 {
-        let (total, count) = self.grid.par_iter()
+        let (total, count) = self
+            .grid
+            .par_iter()
             .filter_map(|cell| cell.as_ref())
             .map(|org| (org.merit, 1))
-            .reduce(
-                || (0.0, 0),
-                |acc, val| (acc.0 + val.0, acc.1 + val.1)
-            );
+            .reduce(|| (0.0, 0), |acc, val| (acc.0 + val.0, acc.1 + val.1));
 
         if count > 0 {
             total / count as f64
@@ -533,13 +539,12 @@ impl World {
     /// Fitness = merit / gestation_time (higher is better)
     #[cfg(not(target_arch = "wasm32"))]
     pub fn average_fitness(&self) -> f64 {
-        let (total, count) = self.grid.par_iter()
+        let (total, count) = self
+            .grid
+            .par_iter()
             .filter_map(|cell| cell.as_ref())
             .map(|org| (org.fitness(), 1))
-            .reduce(
-                || (0.0, 0),
-                |acc, val| (acc.0 + val.0, acc.1 + val.1)
-            );
+            .reduce(|| (0.0, 0), |acc, val| (acc.0 + val.0, acc.1 + val.1));
 
         if count > 0 {
             total / count as f64
@@ -950,7 +955,7 @@ mod tests {
         org1.gestation_time = 100;
 
         let mut org2 = Organism::ancestor();
-        org2.merit = 4.0;  // 4x merit (e.g., completed AND task)
+        org2.merit = 4.0; // 4x merit (e.g., completed AND task)
         org2.gestation_time = 100;
 
         world.inject_organism(org1, 0, 0);
@@ -988,13 +993,13 @@ mod tests {
         // Inject a low-fitness organism
         let mut low_fit = Organism::ancestor();
         low_fit.merit = 1.0;
-        low_fit.gestation_time = 200;  // Slow gestation
+        low_fit.gestation_time = 200; // Slow gestation
         world.inject_organism(low_fit, 0, 0);
 
         // Inject a high-fitness organism
         let mut high_fit = Organism::ancestor();
-        high_fit.merit = 4.0;  // High merit from tasks
-        high_fit.gestation_time = 100;  // Fast gestation
+        high_fit.merit = 4.0; // High merit from tasks
+        high_fit.gestation_time = 100; // Fast gestation
         world.inject_organism(high_fit, 1, 0);
 
         // High-fitness should have 8x fitness advantage

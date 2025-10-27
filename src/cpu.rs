@@ -5,9 +5,9 @@ const STACK_MAX_DEPTH: usize = 10;
 /// Represents which head to use for operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeadType {
-    InstructionPointer = 0,  // nop-A
-    ReadHead = 1,            // nop-B
-    WriteHead = 2,           // nop-C
+    InstructionPointer = 0, // nop-A
+    ReadHead = 1,           // nop-B
+    WriteHead = 2,          // nop-C
     FlowHead = 3,
 }
 
@@ -52,7 +52,7 @@ pub struct CPU {
 impl CPU {
     pub fn new() -> Self {
         Self {
-            registers: [0, 0, 0],  // AX=0, BX=1, CX=2
+            registers: [0, 0, 0], // AX=0, BX=1, CX=2
             stack1: Vec::with_capacity(STACK_MAX_DEPTH),
             stack2: Vec::with_capacity(STACK_MAX_DEPTH),
             active_stack: false,
@@ -60,7 +60,7 @@ impl CPU {
             read_head: 0,
             write_head: 0,
             flow_head: 0,
-            input_buffer: vec![0; 3],  // Start with some default inputs
+            input_buffer: vec![0; 3], // Start with some default inputs
             output_buffer: Vec::new(),
             last_copied_label: Vec::new(),
             skip_next: false,
@@ -167,19 +167,14 @@ impl CPU {
         let mut template = Vec::new();
         let mut pos = start_pos;
 
-        loop {
-            if let Some(inst) = genome.get(pos) {
-                if inst.is_nop() {
-                    template.push(*inst);
-                    pos = self.advance_head(pos, genome.len());
-                } else {
-                    break;
-                }
+        while let Some(inst) = genome.get(pos) {
+            if inst.is_nop() {
+                template.push(*inst);
+                pos = self.advance_head(pos, genome.len());
             } else {
                 break;
             }
 
-            // Prevent infinite loops
             if template.len() > genome.len() {
                 break;
             }
@@ -190,7 +185,11 @@ impl CPU {
 
     /// Find the complement template in the genome
     /// Returns the distance to the template and the size of the template
-    pub fn search_template(&self, genome: &[Instruction], start_pos: usize) -> Option<(i32, usize)> {
+    pub fn search_template(
+        &self,
+        genome: &[Instruction],
+        start_pos: usize,
+    ) -> Option<(i32, usize)> {
         // Read template starting after current instruction
         let template_start = self.advance_head(start_pos, genome.len());
         let template = self.read_template(genome, template_start);
@@ -285,7 +284,7 @@ mod tests {
         cpu.push(100);
         assert_eq!(cpu.pop(), 100);
         assert_eq!(cpu.pop(), 42);
-        assert_eq!(cpu.pop(), 0);  // Empty stack returns 0
+        assert_eq!(cpu.pop(), 0); // Empty stack returns 0
     }
 
     #[test]
@@ -321,7 +320,7 @@ mod tests {
     fn test_advance_head() {
         let cpu = CPU::new();
         assert_eq!(cpu.advance_head(0, 50), 1);
-        assert_eq!(cpu.advance_head(49, 50), 0);  // Wraps around
+        assert_eq!(cpu.advance_head(49, 50), 0); // Wraps around
         assert_eq!(cpu.advance_head(25, 50), 26);
     }
 
@@ -329,22 +328,22 @@ mod tests {
     fn test_move_head_positive() {
         let cpu = CPU::new();
         assert_eq!(cpu.move_head(10, 5, 50), 15);
-        assert_eq!(cpu.move_head(45, 10, 50), 5);  // Wraps around
-        assert_eq!(cpu.move_head(0, 0, 50), 0);    // No movement
+        assert_eq!(cpu.move_head(45, 10, 50), 5); // Wraps around
+        assert_eq!(cpu.move_head(0, 0, 50), 0); // No movement
     }
 
     #[test]
     fn test_move_head_negative() {
         let cpu = CPU::new();
         assert_eq!(cpu.move_head(10, -5, 50), 5);
-        assert_eq!(cpu.move_head(2, -5, 50), 47);  // Negative wrap
-        assert_eq!(cpu.move_head(0, -1, 50), 49);  // Wrap to end
+        assert_eq!(cpu.move_head(2, -5, 50), 47); // Negative wrap
+        assert_eq!(cpu.move_head(0, -1, 50), 49); // Wrap to end
     }
 
     #[test]
     fn test_move_head_large_offset() {
         let cpu = CPU::new();
-        assert_eq!(cpu.move_head(10, 100, 50), 10);  // 100 % 50 = 0
+        assert_eq!(cpu.move_head(10, 100, 50), 10); // 100 % 50 = 0
         assert_eq!(cpu.move_head(10, -100, 50), 10); // -100 % 50 = 0
     }
 
@@ -392,11 +391,7 @@ mod tests {
     #[test]
     fn test_template_reading_wraps() {
         let cpu = CPU::new();
-        let genome = vec![
-            Instruction::Add,
-            Instruction::NopA,
-            Instruction::NopB,
-        ];
+        let genome = vec![Instruction::Add, Instruction::NopA, Instruction::NopB];
         let template = cpu.read_template(&genome, 1);
         assert_eq!(template.len(), 2);
     }
@@ -411,7 +406,7 @@ mod tests {
             Instruction::NopC,
         ];
 
-        assert_eq!(cpu.get_register_index(&genome, 1), 0);  // NopA -> AX (0)
+        assert_eq!(cpu.get_register_index(&genome, 1), 0); // NopA -> AX (0)
     }
 
     #[test]
@@ -440,13 +435,13 @@ mod tests {
         // Genome: h-search (position 0) followed by template nop-a nop-b,
         // then some instructions, then complement nop-b nop-a
         let genome = vec![
-            Instruction::HSearch,  // Position 0 (where we search from)
-            Instruction::NopA,     // Position 1 (template start)
-            Instruction::NopB,     // Position 2 (template end)
-            Instruction::Add,      // Position 3
-            Instruction::Sub,      // Position 4
-            Instruction::NopB,     // Position 5 (complement: NopA -> NopB)
-            Instruction::NopA,     // Position 6 (complement: NopB -> NopA)
+            Instruction::HSearch, // Position 0 (where we search from)
+            Instruction::NopA,    // Position 1 (template start)
+            Instruction::NopB,    // Position 2 (template end)
+            Instruction::Add,     // Position 3
+            Instruction::Sub,     // Position 4
+            Instruction::NopB,    // Position 5 (complement: NopA -> NopB)
+            Instruction::NopA,    // Position 6 (complement: NopB -> NopA)
         ];
 
         if let Some((distance, size)) = cpu.search_template(&genome, 0) {
