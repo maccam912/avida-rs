@@ -18,6 +18,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Install system dependencies
         if: runner.os == 'Linux'
@@ -42,6 +44,9 @@ jobs:
 
       - name: Build avida-rs binary
         run: cargo build --locked --bin avida-rs
+
+      - name: Build for wasm32-unknown-unknown
+        run: cargo build --locked --target wasm32-unknown-unknown
 
       - name: Cargo test
         run: cargo test

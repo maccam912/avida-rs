@@ -6,6 +6,7 @@ edition = "2021"
 [lib]
 name = "avida_rs"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "avida-rs"
