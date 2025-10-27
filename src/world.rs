@@ -313,12 +313,19 @@ impl World {
                     ));
                 }
 
+                let parent_idx = self.grid_index(x, y);
+                let mut parent_alive = true;
+
                 for cycle_num in 0..actual_cycles {
+                    if !parent_alive {
+                        break;
+                    }
+
                     // Need to borrow mutably, so temporarily take organism
-                    let idx = self.grid_index(x, y);
-                    if let (Some(mut org), Some(mut detector)) =
-                        (self.grid[idx].take(), self.task_detectors[idx].take())
-                    {
+                    if let (Some(mut org), Some(mut detector)) = (
+                        self.grid[parent_idx].take(),
+                        self.task_detectors[parent_idx].take(),
+                    ) {
                         // Detect potential infinite loops (organism stuck at same IP)
                         let ip_before = org.cpu.ip;
 
@@ -368,12 +375,18 @@ impl World {
 
                                     // Place offspring
                                     let birth_idx = self.grid_index(birth_x, birth_y);
-                                    if self.grid[birth_idx].is_some() {
+                                    let replacing_parent = birth_idx == parent_idx;
+
+                                    if self.grid[birth_idx].is_some() || replacing_parent {
                                         self.total_deaths += 1;
                                     }
                                     self.grid[birth_idx] = Some(offspring);
                                     self.task_detectors[birth_idx] = Some(TaskDetector::new());
                                     self.total_births += 1;
+
+                                    if replacing_parent {
+                                        parent_alive = false;
+                                    }
                                 } else {
                                     crate::debug::log_event(format!(
                                         "[WARN] No birth location found for offspring at ({}, {})",
@@ -383,10 +396,15 @@ impl World {
                             }
                         }
 
-                        // Put organism back
-                        let idx = self.grid_index(x, y);
-                        self.grid[idx] = Some(org);
-                        self.task_detectors[idx] = Some(detector);
+                        // Put organism back unless it was replaced by its offspring
+                        if parent_alive {
+                            self.grid[parent_idx] = Some(org);
+                            self.task_detectors[parent_idx] = Some(detector);
+                        }
+                    }
+
+                    if !parent_alive {
+                        break;
                     }
                 }
             }
