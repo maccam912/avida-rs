@@ -1,4 +1,5 @@
 use crate::instruction::Instruction;
+use rand::Rng;
 
 const STACK_MAX_DEPTH: usize = 10;
 
@@ -51,6 +52,9 @@ pub struct CPU {
 
 impl CPU {
     pub fn new() -> Self {
+        let mut rng = rand::thread_rng();
+        let input_buffer = (0..3).map(|_| rng.gen::<i32>()).collect();
+
         Self {
             registers: [0, 0, 0], // AX=0, BX=1, CX=2
             stack1: Vec::with_capacity(STACK_MAX_DEPTH),
@@ -60,7 +64,7 @@ impl CPU {
             read_head: 0,
             write_head: 0,
             flow_head: 0,
-            input_buffer: vec![0; 3], // Start with some default inputs
+            input_buffer,
             output_buffer: Vec::new(),
             last_copied_label: Vec::new(),
             skip_next: false,
