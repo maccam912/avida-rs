@@ -1,9 +1,6 @@
 // Import from the library instead of declaring modules
 use avida_rs::{debug, ui::AvidaApp};
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> Result<(), eframe::Error> {
     // Initialize debug system
@@ -32,8 +29,9 @@ fn main() -> Result<(), eframe::Error> {
 }
 
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
+fn main() {
+    use wasm_bindgen::JsCast;
+
     // Set up panic hook for better error messages in the browser
     console_error_panic_hook::set_once();
 
@@ -42,18 +40,31 @@ pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
 
     let web_options = eframe::WebOptions::default();
 
-    eframe::WebRunner::new()
-        .start(
-            "avida-canvas",
-            web_options,
-            Box::new(|cc| Ok(Box::new(AvidaApp::new(cc)))),
-        )
-        .await?;
+    wasm_bindgen_futures::spawn_local(async {
+        let document = web_sys::window()
+            .expect("No window")
+            .document()
+            .expect("No document");
 
-    Ok(())
-}
+        let canvas = document
+            .get_element_by_id("avida-canvas")
+            .expect("Failed to find avida-canvas")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("avida-canvas was not a HtmlCanvasElement");
 
-#[cfg(target_arch = "wasm32")]
-fn main() {
-    // WASM entry point is handled by start() function
+        let start_result = eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(|cc| Ok(Box::new(AvidaApp::new(cc)))),
+            )
+            .await;
+
+        match start_result {
+            Ok(_) => {}
+            Err(e) => {
+                panic!("Failed to start eframe: {e:?}");
+            }
+        }
+    });
 }
