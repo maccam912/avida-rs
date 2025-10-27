@@ -1,8 +1,8 @@
 use crate::cpu::HeadType;
-use std::sync::atomic::{AtomicU32, Ordering};
 use crate::instruction::Instruction;
 use crate::organism::Organism;
 use crate::tasks::{Task, TaskDetector};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Track instruction execution for monitoring
 static INSTRUCTIONS_EXECUTED: AtomicU32 = AtomicU32::new(0);
@@ -20,7 +20,7 @@ pub fn execute_instruction(
     // Track total instructions executed
     let inst_count = INSTRUCTIONS_EXECUTED.fetch_add(1, Ordering::Relaxed);
     if inst_count == 0 {
-        crate::debug::log_event("[START] First instruction execution".to_string());
+        crate::debug::log_event("[START] First instruction execution");
     }
 
     if organism.cpu.skip_next {
@@ -39,7 +39,9 @@ pub fn execute_instruction(
             // Conditionals (d-e)
             Instruction::IfNEqu => {
                 // Get complement label following this instruction
-                let template_start = organism.cpu.advance_head(organism.cpu.ip, organism.genome.len());
+                let template_start = organism
+                    .cpu
+                    .advance_head(organism.cpu.ip, organism.genome.len());
                 let template = organism.cpu.read_template(&organism.genome, template_start);
 
                 // Check if BX equals the template pattern (as a hash/value)
@@ -56,8 +58,8 @@ pub fn execute_instruction(
 
             Instruction::IfLess => {
                 // Get the register to compare with (default BX vs CX)
-                let reg1_idx = 1;  // BX
-                let reg2_idx = organism.cpu.get_register_index(&organism.genome, 2);  // CX default
+                let reg1_idx = 1; // BX
+                let reg2_idx = organism.cpu.get_register_index(&organism.genome, 2); // CX default
                 let val1 = organism.cpu.registers[reg1_idx];
                 let val2 = organism.cpu.registers[reg2_idx];
 
@@ -68,7 +70,9 @@ pub fn execute_instruction(
 
             Instruction::IfLabel => {
                 // Check if the last copied label matches the complement of the following label
-                let template_start = organism.cpu.advance_head(organism.cpu.ip, organism.genome.len());
+                let template_start = organism
+                    .cpu
+                    .advance_head(organism.cpu.ip, organism.genome.len());
                 let template = organism.cpu.read_template(&organism.genome, template_start);
                 let template_len = template.len();
 
@@ -79,24 +83,33 @@ pub fn execute_instruction(
                     .collect();
 
                 // Check if last_copied_label ENDS WITH the complement (not exact match)
-                let matches = if complement.is_empty() {
-                    false
-                } else if organism.cpu.last_copied_label.len() < complement.len() {
+                let matches = if complement.is_empty()
+                    || organism.cpu.last_copied_label.len() < complement.len()
+                {
                     false
                 } else {
                     let start = organism.cpu.last_copied_label.len() - complement.len();
-                    &organism.cpu.last_copied_label[start..] == &complement[..]
+                    organism.cpu.last_copied_label[start..] == complement[..]
                 };
 
                 static LABEL_COUNT: AtomicU32 = AtomicU32::new(0);
                 let label_count = LABEL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
                 if label_count <= 5 {
-                    let label_str: String = organism.cpu.last_copied_label.iter().map(|i| i.to_char()).collect();
+                    let label_str: String = organism
+                        .cpu
+                        .last_copied_label
+                        .iter()
+                        .map(|i| i.to_char())
+                        .collect();
                     let comp_str: String = complement.iter().map(|i| i.to_char()).collect();
                     crate::debug::log_event(format!(
                         "[IF-LABEL #{}] last_copied:'{}' template:'{}' match:{} skip:{}",
                         label_count,
-                        if label_str.len() > 8 { &label_str[label_str.len()-8..] } else { &label_str },
+                        if label_str.len() > 8 {
+                            &label_str[label_str.len() - 8..]
+                        } else {
+                            &label_str
+                        },
                         comp_str,
                         matches,
                         !matches
@@ -105,7 +118,9 @@ pub fn execute_instruction(
 
                 // Advance IP past the template (template nops should not be executed as instructions)
                 for _ in 0..template_len {
-                    organism.cpu.ip = organism.cpu.advance_head(organism.cpu.ip, organism.genome.len());
+                    organism.cpu.ip = organism
+                        .cpu
+                        .advance_head(organism.cpu.ip, organism.genome.len());
                 }
 
                 if !matches {
@@ -116,12 +131,12 @@ pub fn execute_instruction(
             // Stack operations (f-h)
             Instruction::Pop => {
                 let value = organism.cpu.pop();
-                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1);  // Default BX
+                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1); // Default BX
                 organism.cpu.registers[reg_idx] = value;
             }
 
             Instruction::Push => {
-                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1);  // Default BX
+                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1); // Default BX
                 let value = organism.cpu.registers[reg_idx];
                 organism.cpu.push(value);
             }
@@ -132,30 +147,28 @@ pub fn execute_instruction(
 
             // Register operations (i-m)
             Instruction::Swap => {
-                let reg1_idx = 1;  // BX
-                let reg2_idx = organism.cpu.get_register_index(&organism.genome, 2);  // Default CX
-                let temp = organism.cpu.registers[reg1_idx];
-                organism.cpu.registers[reg1_idx] = organism.cpu.registers[reg2_idx];
-                organism.cpu.registers[reg2_idx] = temp;
+                let reg1_idx = 1; // BX
+                let reg2_idx = organism.cpu.get_register_index(&organism.genome, 2); // Default CX
+                organism.cpu.registers.swap(reg1_idx, reg2_idx);
             }
 
             Instruction::ShiftR => {
-                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1);  // Default BX
+                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1); // Default BX
                 organism.cpu.registers[reg_idx] >>= 1;
             }
 
             Instruction::ShiftL => {
-                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1);  // Default BX
+                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1); // Default BX
                 organism.cpu.registers[reg_idx] <<= 1;
             }
 
             Instruction::Inc => {
-                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1);  // Default BX
+                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1); // Default BX
                 organism.cpu.registers[reg_idx] = organism.cpu.registers[reg_idx].wrapping_add(1);
             }
 
             Instruction::Dec => {
-                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1);  // Default BX
+                let reg_idx = organism.cpu.get_register_index(&organism.genome, 1); // Default BX
                 organism.cpu.registers[reg_idx] = organism.cpu.registers[reg_idx].wrapping_sub(1);
             }
 
@@ -189,7 +202,7 @@ pub fn execute_instruction(
                         // Apply merit bonus with cap to prevent overflow
                         let multiplier = task.merit_multiplier();
                         organism.merit *= multiplier;
-                        organism.merit = organism.merit.min(1000.0);  // Cap merit to prevent infinity
+                        organism.merit = organism.merit.min(1000.0); // Cap merit to prevent infinity
                         completed_task = Some(task);
                     }
                 }
@@ -229,18 +242,24 @@ pub fn execute_instruction(
 
             Instruction::HSearch => {
                 // Search for complement template
-                if let Some((distance, size)) = organism.cpu.search_template(
-                    &organism.genome,
-                    organism.cpu.ip
-                ) {
-                    organism.cpu.registers[1] = distance;  // BX = distance
-                    organism.cpu.registers[2] = size as i32;  // CX = size
+                if let Some((distance, size)) = organism
+                    .cpu
+                    .search_template(&organism.genome, organism.cpu.ip)
+                {
+                    organism.cpu.registers[1] = distance; // BX = distance
+                    organism.cpu.registers[2] = size as i32; // CX = size
 
                     // Set flow head to end of found template
-                    let template_start = organism.cpu.advance_head(organism.cpu.ip, organism.genome.len());
+                    let template_start = organism
+                        .cpu
+                        .advance_head(organism.cpu.ip, organism.genome.len());
                     let search_start = organism.cpu.advance_head(
-                        template_start + organism.cpu.read_template(&organism.genome, template_start).len(),
-                        organism.genome.len()
+                        template_start
+                            + organism
+                                .cpu
+                                .read_template(&organism.genome, template_start)
+                                .len(),
+                        organism.genome.len(),
                     );
                     let target_pos = (search_start + distance as usize) % organism.genome.len();
                     organism.cpu.flow_head = (target_pos + size) % organism.genome.len();
@@ -250,10 +269,9 @@ pub fn execute_instruction(
                     organism.cpu.registers[2] = 0;
                     // Set flow head to next instruction (copy loop start)
                     // mov-head will set IP to (flow_head - 1), then advance_ip adds 1 = flow_head
-                    organism.cpu.flow_head = organism.cpu.advance_head(
-                        organism.cpu.ip,
-                        organism.genome.len()
-                    );
+                    organism.cpu.flow_head = organism
+                        .cpu
+                        .advance_head(organism.cpu.ip, organism.genome.len());
 
                     static SEARCH_COUNT: AtomicU32 = AtomicU32::new(0);
                     let search_count = SEARCH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
@@ -293,7 +311,9 @@ pub fn execute_instruction(
                 let offset = organism.cpu.registers[2];
                 let head_type = organism.cpu.get_head_from_nop(&organism.genome);
                 let current = organism.cpu.get_head(head_type);
-                let new_pos = organism.cpu.move_head(current, offset, organism.genome.len());
+                let new_pos = organism
+                    .cpu
+                    .move_head(current, offset, organism.genome.len());
                 organism.cpu.set_head(head_type, new_pos);
             }
 
@@ -330,19 +350,19 @@ mod tests {
         let mut detector = TaskDetector::new();
         let (divide, _) = execute_instruction(&mut org, &mut detector, 0.0);
         assert!(!divide);
-        assert_eq!(org.cpu.ip, 0);  // Wrapped around
+        assert_eq!(org.cpu.ip, 0); // Wrapped around
     }
 
     #[test]
     fn test_add_instruction() {
         let mut org = Organism::new(vec![Instruction::Add]);
-        org.cpu.registers[1] = 10;  // BX
-        org.cpu.registers[2] = 5;   // CX
+        org.cpu.registers[1] = 10; // BX
+        org.cpu.registers[2] = 5; // CX
 
         let mut detector = TaskDetector::new();
         execute_instruction(&mut org, &mut detector, 0.0);
 
-        assert_eq!(org.cpu.registers[1], 15);  // BX = 10 + 5
+        assert_eq!(org.cpu.registers[1], 15); // BX = 10 + 5
     }
 
     #[test]
@@ -369,7 +389,7 @@ mod tests {
         assert_eq!(org.cpu.active_stack_ref().len(), 1);
 
         // Pop
-        org.cpu.registers[1] = 0;  // Clear BX
+        org.cpu.registers[1] = 0; // Clear BX
         execute_instruction(&mut org, &mut detector, 0.0);
         assert_eq!(org.cpu.registers[1], 100);
     }

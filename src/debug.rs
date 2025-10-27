@@ -1,7 +1,7 @@
+use std::collections::VecDeque;
 /// Debug logging utilities for tracking organism behavior and diagnosing issues
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::collections::VecDeque;
 
 /// Global flag to enable detailed debug logging
 /// Set to false to reduce console spam
@@ -59,7 +59,10 @@ pub fn print_stats() {
     println!("Allocations: {}", ALLOCATIONS.load(Ordering::Relaxed));
     println!("Copies: {}", COPIES.load(Ordering::Relaxed));
     println!("Divisions: {}", DIVISIONS.load(Ordering::Relaxed));
-    println!("Failed Divisions: {}", FAILED_DIVISIONS.load(Ordering::Relaxed));
+    println!(
+        "Failed Divisions: {}",
+        FAILED_DIVISIONS.load(Ordering::Relaxed)
+    );
     println!("=======================\n");
 }
 

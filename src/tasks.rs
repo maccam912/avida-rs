@@ -1,18 +1,18 @@
-/// Task detection and reward system for Avida organisms
-/// Based on the default Logic-9 environment
+//! Task detection and reward system for Avida organisms
+//! Based on the default Logic-9 environment
 
 /// The 9 logic tasks organisms can perform
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Task {
-    Not = 0,   // NOT - bitwise not
-    Nand = 1,  // NAND - bitwise nand
-    And = 2,   // AND - bitwise and
-    Orn = 3,   // ORN - or-not (A or not B)
-    Or = 4,    // OR - bitwise or
-    Andn = 5,  // ANDN - and-not (A and not B)
-    Nor = 6,   // NOR - bitwise nor
-    Xor = 7,   // XOR - bitwise xor
-    Equ = 8,   // EQU - equivalence (not xor)
+    Not = 0,  // NOT - bitwise not
+    Nand = 1, // NAND - bitwise nand
+    And = 2,  // AND - bitwise and
+    Orn = 3,  // ORN - or-not (A or not B)
+    Or = 4,   // OR - bitwise or
+    Andn = 5, // ANDN - and-not (A and not B)
+    Nor = 6,  // NOR - bitwise nor
+    Xor = 7,  // XOR - bitwise xor
+    Equ = 8,  // EQU - equivalence (not xor)
 }
 
 impl Task {
@@ -20,15 +20,15 @@ impl Task {
     /// Merit multiplier = 2^value
     pub fn bonus_value(&self) -> f64 {
         match self {
-            Task::Not => 1.0,   // 2^1 = 2x merit
-            Task::Nand => 1.0,  // 2^1 = 2x merit
-            Task::And => 2.0,   // 2^2 = 4x merit
-            Task::Orn => 2.0,   // 2^2 = 4x merit
-            Task::Or => 3.0,    // 2^3 = 8x merit
-            Task::Andn => 3.0,  // 2^3 = 8x merit
-            Task::Nor => 4.0,   // 2^4 = 16x merit
-            Task::Xor => 4.0,   // 2^4 = 16x merit
-            Task::Equ => 4.0,   // 2^4 = 16x merit
+            Task::Not => 1.0,  // 2^1 = 2x merit
+            Task::Nand => 1.0, // 2^1 = 2x merit
+            Task::And => 2.0,  // 2^2 = 4x merit
+            Task::Orn => 2.0,  // 2^2 = 4x merit
+            Task::Or => 3.0,   // 2^3 = 8x merit
+            Task::Andn => 3.0, // 2^3 = 8x merit
+            Task::Nor => 4.0,  // 2^4 = 16x merit
+            Task::Xor => 4.0,  // 2^4 = 16x merit
+            Task::Equ => 4.0,  // 2^4 = 16x merit
         }
     }
 
@@ -77,9 +77,7 @@ pub struct TaskDetector {
 
 impl TaskDetector {
     pub fn new() -> Self {
-        Self {
-            inputs: vec![],
-        }
+        Self { inputs: vec![] }
     }
 
     /// Record an input value
@@ -149,16 +147,16 @@ impl TaskEnvironment {
     /// Create the default Logic-9 environment
     pub fn default_logic9() -> Self {
         Self {
-            task_enabled: [true; 9],  // All tasks enabled
-            max_task_count: [1; 9],   // Each task can only be rewarded once
+            task_enabled: [true; 9], // All tasks enabled
+            max_task_count: [1; 9],  // Each task can only be rewarded once
         }
     }
 
     /// Check if a task is enabled and can still be rewarded
     pub fn can_reward_task(&self, task: Task, current_count: u32) -> bool {
         let idx = task as usize;
-        self.task_enabled[idx] &&
-            (self.max_task_count[idx] == 0 || current_count < self.max_task_count[idx])
+        self.task_enabled[idx]
+            && (self.max_task_count[idx] == 0 || current_count < self.max_task_count[idx])
     }
 }
 
@@ -212,7 +210,7 @@ mod tests {
         detector.add_input(0b1100);
         detector.add_input(0b1010);
 
-        let output = 0b1100 & 0b1010;  // 0b1000
+        let output = 0b1100 & 0b1010; // 0b1000
         let result = detector.check_output(output);
         assert!(result.is_some());
         let (task, _) = result.unwrap();
@@ -358,7 +356,7 @@ mod tests {
     #[test]
     fn test_task_environment_task_limits() {
         let mut env = TaskEnvironment::default_logic9();
-        env.max_task_count[0] = 5;  // NOT task limit
+        env.max_task_count[0] = 5; // NOT task limit
 
         // Verify limit is set
         assert_eq!(env.max_task_count[0], 5);
@@ -367,10 +365,10 @@ mod tests {
     #[test]
     fn test_task_environment_can_disable_task() {
         let mut env = TaskEnvironment::default_logic9();
-        env.task_enabled[0] = false;  // Disable NOT task
+        env.task_enabled[0] = false; // Disable NOT task
 
         assert!(!env.task_enabled[0]);
-        assert!(env.task_enabled[1]);  // Other tasks still enabled
+        assert!(env.task_enabled[1]); // Other tasks still enabled
     }
 
     #[test]

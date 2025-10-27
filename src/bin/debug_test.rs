@@ -1,5 +1,5 @@
-/// Debug test harness - run simulation for a limited time and print debug output
-/// Run with: cargo run --bin debug_test --release
+//! Debug test harness - run simulation for a limited time and print debug output
+//! Run with: cargo run --bin debug_test --release
 
 use avida_rs::world::World;
 
@@ -17,7 +17,11 @@ fn main() {
     println!("Step 3: Creating world...");
     std::io::Write::flush(&mut std::io::stdout()).unwrap();
     let mut world = World::new();
-    println!("World created: {}x{}", world.dimensions().0, world.dimensions().1);
+    println!(
+        "World created: {}x{}",
+        world.dimensions().0,
+        world.dimensions().1
+    );
     std::io::Write::flush(&mut std::io::stdout()).unwrap();
 
     world.inject_ancestor();
@@ -31,7 +35,8 @@ fn main() {
 
         // Print progress every 50 updates
         if (i + 1) % 50 == 0 {
-            println!("Update {}: pop={} births={} deaths={} avg_size={:.1} avg_merit={:.1}",
+            println!(
+                "Update {}: pop={} births={} deaths={} avg_size={:.1} avg_merit={:.1}",
                 i + 1,
                 world.population_size,
                 world.total_births,
@@ -52,7 +57,9 @@ fn main() {
     // Print task statistics
     println!("\nTask completions:");
     let task_stats = world.task_statistics();
-    let task_names = ["NOT", "NAND", "AND", "ORN", "OR", "ANDN", "NOR", "XOR", "EQU"];
+    let task_names = [
+        "NOT", "NAND", "AND", "ORN", "OR", "ANDN", "NOR", "XOR", "EQU",
+    ];
     for (i, count) in task_stats.iter().enumerate() {
         if *count > 0 {
             println!("  {}: {}", task_names[i], count);
@@ -67,6 +74,9 @@ fn main() {
         println!("\n⚠️  WARNING: No births occurred! Organism may not be replicating.");
         println!("Check the debug output above for clues.\n");
     } else {
-        println!("\n✓ Replication working! {} births in 100 updates.\n", world.total_births);
+        println!(
+            "\n✓ Replication working! {} births in 100 updates.\n",
+            world.total_births
+        );
     }
 }
