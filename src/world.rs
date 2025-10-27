@@ -58,8 +58,8 @@ impl World {
             task_detectors,
             task_env: TaskEnvironment::default_logic9(),
             copy_mutation_rate: 0.0075, // Default Avida copy mutation rate (0.75%)
-            insertion_rate: 0.0,        // Insertions disabled during copy (Avida default)
-            deletion_rate: 0.0,         // Deletions disabled during copy (Avida default)
+            insertion_rate: 0.05,       // 5% chance of insertion per division
+            deletion_rate: 0.05,        // 5% chance of deletion per division
             death_method: 2,            // Avida default: age limit × genome length
             age_limit: 20,              // Avida default: 20× genome length
             prefer_empty: true,         // Avida default: prefer empty cells
@@ -679,9 +679,12 @@ mod tests {
         assert!(world.population_size > 1);
         assert!(world.total_births > 0);
 
+        // With insertion/deletion mutations, genome sizes will vary
+        // but should remain in a reasonable range around the ancestor size (50)
         for cell in &world.grid {
             if let Some(org) = cell {
-                assert_eq!(org.genome_size(), 50);
+                assert!(org.genome_size() >= 40 && org.genome_size() <= 60,
+                    "Genome size {} outside expected range [40, 60]", org.genome_size());
             }
         }
     }
@@ -698,9 +701,12 @@ mod tests {
         assert!(world.population_size > 1);
         assert!(world.total_births > 0);
 
+        // With insertion/deletion mutations, genome sizes will vary
+        // but should remain in a reasonable range around the ancestor size (50)
         for cell in &world.grid {
             if let Some(org) = cell {
-                assert_eq!(org.genome_size(), 50);
+                assert!(org.genome_size() >= 40 && org.genome_size() <= 60,
+                    "Genome size {} outside expected range [40, 60]", org.genome_size());
             }
         }
     }
@@ -929,8 +935,8 @@ mod tests {
     fn test_mutation_rates() {
         let world = World::new();
         assert_eq!(world.copy_mutation_rate, 0.0075);
-        assert_eq!(world.insertion_rate, 0.0);
-        assert_eq!(world.deletion_rate, 0.0);
+        assert_eq!(world.insertion_rate, 0.05);
+        assert_eq!(world.deletion_rate, 0.05);
     }
 
     #[test]
