@@ -12,18 +12,20 @@ pub struct Organism {
 
     /// Merit value - determines CPU cycle allocation
     /// Higher merit = more CPU cycles per update
+    /// Merit is ONLY increased by completing tasks
     pub merit: f64,
 
-    /// Age in CPU cycles executed
-    pub age: u64,
+    /// Total number of instructions executed by this organism
+    pub instruction_count: u64,
 
-    /// Generation number
+    /// Generation number (0 for injected ancestors)
     pub generation: u32,
 
-    /// Number of offspring produced
+    /// Number of offspring produced by this organism
     pub offspring_count: u32,
 
     /// Tasks completed (bit flags for 9 tasks)
+    /// Each bit represents whether task 0-8 has been completed
     pub tasks_completed: u16,
 
     /// Child genome being constructed (allocated memory)
@@ -32,11 +34,9 @@ pub struct Organism {
     /// Highest offset copied into the child genome during current gestation
     pub child_copy_progress: usize,
 
-    /// Gestation time (CPU cycles needed to reproduce)
-    pub gestation_time: u64,
-
-    /// CPU cycles executed in current gestation
-    pub cycles_this_gestation: u64,
+    /// Number of instructions executed during current gestation period
+    /// (reset after each successful division)
+    pub gestation_cycles: u64,
 
     /// Position in the world grid
     pub position: Option<(usize, usize)>,
@@ -44,26 +44,25 @@ pub struct Organism {
 
 impl Organism {
     /// Create a new organism with the given genome
+    /// All organisms start with merit 1.0 (base merit)
     pub fn new(genome: Vec<Instruction>) -> Self {
-        let genome_size = genome.len();
         Self {
             genome,
             cpu: CPU::new(),
-            merit: 1.0, // Base merit
-            age: 0,
+            merit: 1.0, // Base merit - ONLY increased by completing tasks
+            instruction_count: 0,
             generation: 0,
             offspring_count: 0,
             tasks_completed: 0,
             child_genome: None,
             child_copy_progress: 0,
-            gestation_time: genome_size as u64 * 2, // Rough estimate
-            cycles_this_gestation: 0,
+            gestation_cycles: 0,
             position: None,
         }
     }
 
     /// Create the default ancestor organism
-    /// Custom working genome that replicates successfully
+    /// This genome successfully self-replicates
     pub fn ancestor() -> Self {
         // Working ancestor genome structure:
         // r     - h-alloc: allocate memory
@@ -93,38 +92,7 @@ impl Organism {
     }
 
     /// Create a task-capable ancestor with "junk DNA" for evolution
-    /// This ancestor can replicate AND has raw material for evolving tasks
-    ///
-    /// Structure:
-    /// - Core replication machinery (same as default ancestor)
-    /// - Task-performing "junk DNA" in padding area that provides:
-    ///   * I/O instructions for input/output
-    ///   * Arithmetic instructions (add, sub, nand)
-    ///   * Stack operations for value manipulation
-    ///
-    /// These extra instructions don't interfere with replication but provide
-    /// raw genetic material that evolution can work with.
     pub fn ancestor_with_tasks() -> Self {
-        // The strategy: keep replication core intact, add task instructions in padding
-        //
-        // Replication core: rutyabsva (9 instructions)
-        // Task junk DNA: gqfgqpgqnoccccccccccccccccccccccccccccc (41 instructions)
-        //   g - push (save value)
-        //   q - IO (input/output)
-        //   f - pop (retrieve value)
-        //   p - nand (logic operation)
-        //   n - add
-        //   o - sub
-        // End marker: bc (2 instructions)
-        //
-        // During replication, after h-divide and mov-head jump back to copy loop,
-        // the task instructions might execute. They won't break replication because:
-        // - IO just reads/writes values
-        // - Arithmetic modifies registers but doesn't affect memory heads
-        // - Stack ops are non-destructive
-        //
-        // BUT they provide the building blocks for task evolution!
-
         let genome_str = "rutyabsvagqfgqpgqnocccccccccccccccccccccccccccccbc";
 
         let genome = crate::instruction::parse_genome(genome_str)
@@ -137,46 +105,24 @@ impl Organism {
         self.genome.get(self.cpu.ip).copied()
     }
 
-    /// Execute a single instruction
-    /// Returns true if organism is ready to divide
-    pub fn execute_instruction(&mut self) -> bool {
-        // Handle skip flag from conditionals
-        if self.cpu.skip_next {
-            self.cpu.skip_next = false;
-            self.advance_ip();
-            return false;
-        }
-
-        if let Some(inst) = self.current_instruction() {
-            if matches!(
-                inst,
-                Instruction::NopA | Instruction::NopB | Instruction::NopC
-            ) {
-                // No-ops do nothing on their own
-            } else {
-                // Other instructions handled elsewhere
-                // This is a placeholder - full execution logic goes in execute.rs
-            }
-        }
-
-        self.advance_ip();
-        self.age += 1;
-        self.cycles_this_gestation += 1;
-
-        false // Not ready to divide yet
-    }
-
     /// Advance the instruction pointer with circular wrapping
     pub fn advance_ip(&mut self) {
         self.cpu.ip = (self.cpu.ip + 1) % self.genome.len();
+    }
+
+    /// Execute a single instruction and increment counters
+    /// This should be called by the world scheduler
+    pub fn execute_instruction(&mut self) {
+        self.instruction_count += 1;
+        self.gestation_cycles += 1;
     }
 
     /// Allocate memory for offspring (h-alloc instruction)
     pub fn allocate_child(&mut self) {
         if self.child_genome.is_some() {
             crate::debug::log_event(format!(
-                "[WARN] h-alloc called but child already exists (gen:{}, age:{}, ip:{})",
-                self.generation, self.age, self.cpu.ip
+                "[WARN] h-alloc called but child already exists (gen:{}, cycles:{}, ip:{})",
+                self.generation, self.instruction_count, self.cpu.ip
             ));
             return;
         }
@@ -196,8 +142,8 @@ impl Organism {
 
         crate::debug::ALLOCATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         crate::debug::log_event(format!(
-            "[ALLOC] gen:{} age:{} size:{} ip:{} -> child allocated",
-            self.generation, self.age, child_size, self.cpu.ip
+            "[ALLOC] gen:{} cycles:{} size:{} ip:{} -> child allocated",
+            self.generation, self.instruction_count, child_size, self.cpu.ip
         ));
     }
 
@@ -273,14 +219,16 @@ impl Organism {
             Some(inst_to_write)
         } else {
             crate::debug::log_event(format!(
-                "[ERROR] h-copy called but no child allocated! gen:{} age:{} ip:{}",
-                self.generation, self.age, self.cpu.ip
+                "[ERROR] h-copy called but no child allocated! gen:{} cycles:{} ip:{}",
+                self.generation, self.instruction_count, self.cpu.ip
             ));
             None
         }
     }
 
     /// Divide the organism and return the offspring
+    /// The parent resets its gestation cycle counter
+    /// The offspring starts with merit 1.0 (task bonuses not inherited)
     pub fn divide(&mut self, insertion_rate: f64, deletion_rate: f64) -> Option<Organism> {
         use rand::Rng;
 
@@ -288,15 +236,15 @@ impl Organism {
         if child_genome_opt.is_none() {
             crate::debug::FAILED_DIVISIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             crate::debug::log_event(format!(
-                "[FAIL] h-divide called but no child allocated! gen:{} age:{}",
-                self.generation, self.age
+                "[FAIL] h-divide called but no child allocated! gen:{} cycles:{}",
+                self.generation, self.instruction_count
             ));
             return None;
         }
 
         let mut child_genome = child_genome_opt.unwrap();
 
-        // Check if enough was copied
+        // Check if enough was copied (at least 50% of parent genome)
         let progress = self.child_copy_progress.min(child_genome.len());
         let parent_size = self.genome.len();
 
@@ -315,9 +263,8 @@ impl Organism {
         child_genome.truncate(progress);
         let size_before_mutations = child_genome.len();
 
-        // Apply insertion and deletion mutations (CANONICAL AVIDA STYLE)
+        // Apply insertion and deletion mutations
         // insertion_rate/deletion_rate is the probability of ONE mutation per division
-        // NOT per-instruction! This matches DIVIDE_INS_PROB and DIVIDE_DEL_PROB
         let mut insertions = 0;
         let mut deletions = 0;
         let mut rng = rand::thread_rng();
@@ -362,7 +309,7 @@ impl Organism {
         // Log first few divisions and every 10th
         if divisions < 5 || divisions % 10 == 0 {
             crate::debug::log_event(format!(
-                "[DIVIDE #{}] gen:{}->{} parent_size:{} copied:{} final:{} (ins:{} del:{}) merit:{:.1}",
+                "[DIVIDE #{}] gen:{}->{} parent_size:{} copied:{} final:{} (ins:{} del:{}) parent_merit:{:.1} child_merit:{:.1} gestation:{}",
                 divisions,
                 self.generation,
                 offspring.generation,
@@ -371,19 +318,18 @@ impl Organism {
                 final_size,
                 insertions,
                 deletions,
-                offspring.merit
+                self.merit,
+                offspring.merit,
+                self.gestation_cycles
             ));
         }
 
         // Update parent
         self.offspring_count += 1;
 
-        // Update gestation time based on actual cycles used this replication
-        self.update_gestation_time();
-        self.cycles_this_gestation = 0;
-
-        // Reset CPU state for next replication cycle
-        self.cpu.ip = 0; // Reset to start of genome to execute h-alloc again
+        // Reset parent state for next replication cycle
+        self.gestation_cycles = 0;
+        self.cpu.ip = 0; // Reset to start of genome
         self.cpu.read_head = 0;
         self.cpu.write_head = 0;
         self.cpu.last_copied_label.clear();
@@ -417,21 +363,18 @@ impl Organism {
         self.genome.len()
     }
 
-    /// Calculate fitness (canonical Avida: fitness = merit / gestation_time)
-    /// Higher fitness = faster reproduction = more offspring per unit time
+    /// Calculate fitness (merit divided by gestation time)
+    /// This is for statistics only - scheduling uses merit directly
     pub fn fitness(&self) -> f64 {
-        if self.gestation_time == 0 {
-            return self.merit; // Avoid division by zero
+        if self.gestation_cycles == 0 {
+            return self.merit;
         }
-        self.merit / (self.gestation_time as f64)
+        self.merit / (self.gestation_cycles as f64)
     }
 
-    /// Update gestation time based on actual execution
-    /// Call this after successful division to set expected gestation for next cycle
-    pub fn update_gestation_time(&mut self) {
-        if self.cycles_this_gestation > 0 {
-            self.gestation_time = self.cycles_this_gestation;
-        }
+    /// Get age (total instructions executed)
+    pub fn age(&self) -> u64 {
+        self.instruction_count
     }
 }
 
@@ -445,6 +388,7 @@ mod tests {
         assert_eq!(ancestor.genome.len(), 50);
         assert_eq!(ancestor.merit, 1.0);
         assert_eq!(ancestor.generation, 0);
+        assert_eq!(ancestor.instruction_count, 0);
     }
 
     #[test]
@@ -453,6 +397,7 @@ mod tests {
         let org = Organism::new(genome);
         assert_eq!(org.genome.len(), 3);
         assert_eq!(org.cpu.ip, 0);
+        assert_eq!(org.merit, 1.0);
     }
 
     #[test]
@@ -551,13 +496,13 @@ mod tests {
         let org = Organism::new(genome);
         assert_eq!(org.genome.len(), 10);
         assert_eq!(org.merit, 1.0);
-        assert_eq!(org.age, 0);
+        assert_eq!(org.instruction_count, 0);
         assert_eq!(org.generation, 0);
         assert_eq!(org.offspring_count, 0);
         assert_eq!(org.tasks_completed, 0);
         assert!(org.child_genome.is_none());
         assert_eq!(org.child_copy_progress, 0);
-        assert_eq!(org.gestation_time, 20); // 10 * 2
+        assert_eq!(org.gestation_cycles, 0);
     }
 
     #[test]
@@ -651,7 +596,7 @@ mod tests {
         assert!(result.is_some());
 
         assert_eq!(org.offspring_count, offspring_count_before + 1);
-        assert_eq!(org.cycles_this_gestation, 0);
+        assert_eq!(org.gestation_cycles, 0);
         assert_eq!(org.cpu.ip, 0); // Reset to start
         assert_eq!(org.cpu.read_head, 0);
         assert_eq!(org.cpu.write_head, 0);
@@ -771,8 +716,6 @@ mod tests {
         }
 
         let offspring = org.divide(1.0, 0.0).unwrap(); // 100% insertion rate
-                                                       // With canonical Avida mutation: 100% rate means ONE insertion will occur
-                                                       // Genome should be exactly 1 instruction larger (50 + 1 = 51)
         assert_eq!(offspring.genome_size(), 51);
     }
 
@@ -786,8 +729,6 @@ mod tests {
         }
 
         let offspring = org.divide(0.0, 1.0).unwrap(); // 100% deletion rate
-                                                       // With canonical Avida mutation: 100% rate means ONE deletion will occur
-                                                       // Genome should be exactly 1 instruction smaller (50 - 1 = 49)
         assert_eq!(offspring.genome_size(), 49);
     }
 
@@ -801,7 +742,6 @@ mod tests {
         }
 
         let offspring = org.divide(0.0, 1.0).unwrap(); // 100% deletion rate
-                                                       // If genome becomes empty after deletion, NopC should be added
         assert_eq!(offspring.genome_size(), 1);
         assert_eq!(offspring.genome[0], Instruction::NopC);
     }
@@ -815,15 +755,12 @@ mod tests {
             org.copy_instruction(0.0);
         }
 
-        // With 100% rates, both insertion and deletion will occur
-        // Net change: +1 -1 = 0, so size should be 50
         let offspring = org.divide(1.0, 1.0).unwrap();
         assert_eq!(offspring.genome_size(), 50);
     }
 
     #[test]
     fn test_divide_with_low_indel_rates() {
-        // Test that low rates mean MOST offspring have no mutations
         let mut unchanged_count = 0;
         let trials = 100;
 
@@ -841,8 +778,6 @@ mod tests {
             }
         }
 
-        // With 0.05 rates, about 90% should be unchanged (1-0.05-0.05 = 0.9)
-        // Allow some variance, expect at least 75% unchanged
         assert!(
             unchanged_count >= 75,
             "Expected most genomes unchanged with 0.05 rates, got {}/100",
@@ -851,13 +786,15 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_instruction_ages_organism() {
+    fn test_execute_instruction_increments_counters() {
         let mut org = Organism::new(vec![Instruction::NopA]);
-        let initial_age = org.age;
+        let initial_count = org.instruction_count;
+        let initial_gestation = org.gestation_cycles;
 
         org.execute_instruction();
 
-        assert_eq!(org.age, initial_age + 1);
+        assert_eq!(org.instruction_count, initial_count + 1);
+        assert_eq!(org.gestation_cycles, initial_gestation + 1);
     }
 
     #[test]
@@ -874,9 +811,9 @@ mod tests {
     fn test_fitness_calculation() {
         let mut org = Organism::ancestor();
         org.merit = 2.0;
-        org.gestation_time = 100;
+        org.gestation_cycles = 100;
 
-        // Fitness = merit / gestation_time
+        // Fitness = merit / gestation_cycles
         assert_eq!(org.fitness(), 0.02);
     }
 
@@ -884,9 +821,8 @@ mod tests {
     fn test_fitness_with_high_merit() {
         let mut org = Organism::ancestor();
         org.merit = 16.0; // As if completed XOR task
-        org.gestation_time = 100;
+        org.gestation_cycles = 100;
 
-        // High merit = high fitness = faster reproduction
         assert_eq!(org.fitness(), 0.16);
     }
 
@@ -894,38 +830,57 @@ mod tests {
     fn test_fitness_comparison() {
         let mut org1 = Organism::ancestor();
         org1.merit = 2.0;
-        org1.gestation_time = 100;
+        org1.gestation_cycles = 100;
 
         let mut org2 = Organism::ancestor();
         org2.merit = 1.0;
-        org2.gestation_time = 100;
+        org2.gestation_cycles = 100;
 
-        // org1 has higher merit, should have higher fitness
         assert!(org1.fitness() > org2.fitness());
-    }
-
-    #[test]
-    fn test_gestation_time_update() {
-        let mut org = Organism::ancestor();
-        org.cycles_this_gestation = 150;
-
-        org.update_gestation_time();
-
-        assert_eq!(org.gestation_time, 150);
     }
 
     #[test]
     fn test_fitness_after_task_completion() {
         let mut org = Organism::ancestor();
         org.merit = 1.0;
-        org.gestation_time = 100;
+        org.gestation_cycles = 100;
         let fitness_before = org.fitness();
 
         // Simulate completing NOT task (2x merit bonus)
         org.merit *= 2.0;
         let fitness_after = org.fitness();
 
-        // Fitness should double with merit
         assert_eq!(fitness_after, fitness_before * 2.0);
+    }
+
+    #[test]
+    fn test_age() {
+        let mut org = Organism::ancestor();
+        assert_eq!(org.age(), 0);
+        org.execute_instruction();
+        assert_eq!(org.age(), 1);
+        org.execute_instruction();
+        assert_eq!(org.age(), 2);
+    }
+
+    #[test]
+    fn test_gestation_cycles_reset_after_divide() {
+        let mut org = Organism::ancestor();
+        org.allocate_child();
+
+        // Simulate some gestation cycles
+        for _ in 0..10 {
+            org.execute_instruction();
+        }
+        assert_eq!(org.gestation_cycles, 10);
+
+        // Complete copying
+        for _ in 0..50 {
+            org.copy_instruction(0.0);
+        }
+
+        // Divide should reset gestation_cycles
+        let _offspring = org.divide(0.0, 0.0).unwrap();
+        assert_eq!(org.gestation_cycles, 0);
     }
 }

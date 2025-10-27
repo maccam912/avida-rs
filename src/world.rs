@@ -256,8 +256,18 @@ impl World {
             ));
         }
 
-        // Each organism gets CPU cycles proportional to its MERIT
-        // This creates differential reproduction: high-merit organisms reproduce faster
+        // **MERIT-BASED SCHEDULING**
+        // Each organism gets CPU cycles STRICTLY proportional to its MERIT
+        // Merit starts at 1.0 and is ONLY increased by completing tasks
+        // This creates selection pressure: organisms that complete tasks get more CPU time
+        // and reproduce faster, dominating the population
+        //
+        // Example: If organism A has merit 1.0 and organism B has merit 4.0 (completed tasks):
+        //   - Total merit = 5.0
+        //   - If total cycles = 150, then cycles_per_merit = 30
+        //   - Organism A gets 30 cycles, organism B gets 120 cycles (4x more)
+        //   - Organism B reproduces 4x faster than organism A
+        //
         // Total CPU cycles per update scales with population to maintain performance
         let total_cycles_per_update = 30.0 * self.population_size.max(1) as f64;
         let cycles_per_merit = total_cycles_per_update / total_merit;
@@ -284,9 +294,9 @@ impl World {
             // Check for age-based death (Avida DEATH_METHOD)
             if let Some(org) = &self.grid[idx] {
                 let should_die = match self.death_method {
-                    0 => false,                                                 // No age-based death
-                    1 => org.age >= self.age_limit,                             // Fixed age limit
-                    2 => org.age >= (org.genome.len() as u64 * self.age_limit), // Age limit × genome length
+                    0 => false,                                                      // No age-based death
+                    1 => org.age() >= self.age_limit,                                // Fixed age limit
+                    2 => org.age() >= (org.genome.len() as u64 * self.age_limit),   // Age limit × genome length
                     _ => false,
                 };
 
@@ -554,7 +564,8 @@ impl World {
     }
 
     /// Get average fitness (parallel)
-    /// Fitness = merit / gestation_time (higher is better)
+    /// Fitness = merit / gestation_cycles (higher is better)
+    /// This is calculated for statistics only - scheduling uses merit directly
     #[cfg(not(target_arch = "wasm32"))]
     pub fn average_fitness(&self) -> f64 {
         let (total, count) = self
@@ -572,7 +583,8 @@ impl World {
     }
 
     /// Get average fitness (sequential on wasm)
-    /// Fitness = merit / gestation_time (higher is better)
+    /// Fitness = merit / gestation_cycles (higher is better)
+    /// This is calculated for statistics only - scheduling uses merit directly
     #[cfg(target_arch = "wasm32")]
     pub fn average_fitness(&self) -> f64 {
         let mut total = 0.0f64;
@@ -966,21 +978,19 @@ mod tests {
     }
 
     #[test]
-    fn test_fitness_affects_cpu_cycles() {
+    fn test_merit_affects_cpu_cycles() {
         let mut world = World::new();
         let mut org1 = Organism::ancestor();
         org1.merit = 1.0;
-        org1.gestation_time = 100;
 
         let mut org2 = Organism::ancestor();
         org2.merit = 4.0; // 4x merit (e.g., completed AND task)
-        org2.gestation_time = 100;
 
         world.inject_organism(org1, 0, 0);
         world.inject_organism(org2, 1, 0);
 
-        // Organism with higher fitness should get more CPU cycles
-        // org2 has 4x fitness, so should reproduce ~4x faster
+        // Organism with higher merit should get more CPU cycles
+        // org2 has 4x merit, so should get 4x more cycles and reproduce ~4x faster
         world.update();
         assert!(world.total_updates > 0);
     }
@@ -990,11 +1000,11 @@ mod tests {
         let mut world = World::new();
         let mut org1 = Organism::ancestor();
         org1.merit = 2.0;
-        org1.gestation_time = 100;
+        org1.gestation_cycles = 100;
 
         let mut org2 = Organism::ancestor();
         org2.merit = 4.0;
-        org2.gestation_time = 100;
+        org2.gestation_cycles = 100;
 
         world.inject_organism(org1, 0, 0);
         world.inject_organism(org2, 1, 0);
@@ -1004,28 +1014,24 @@ mod tests {
     }
 
     #[test]
-    fn test_fitness_selection_pressure() {
-        // High-fitness organisms should dominate over time
+    fn test_merit_selection_pressure() {
+        // High-merit organisms should dominate over time
         let mut world = World::new();
 
-        // Inject a low-fitness organism
-        let mut low_fit = Organism::ancestor();
-        low_fit.merit = 1.0;
-        low_fit.gestation_time = 200; // Slow gestation
-        world.inject_organism(low_fit, 0, 0);
+        // Inject a low-merit organism
+        let mut low_merit = Organism::ancestor();
+        low_merit.merit = 1.0;
+        world.inject_organism(low_merit, 0, 0);
 
-        // Inject a high-fitness organism
-        let mut high_fit = Organism::ancestor();
-        high_fit.merit = 4.0; // High merit from tasks
-        high_fit.gestation_time = 100; // Fast gestation
-        world.inject_organism(high_fit, 1, 0);
+        // Inject a high-merit organism
+        let mut high_merit = Organism::ancestor();
+        high_merit.merit = 4.0; // High merit from tasks
+        world.inject_organism(high_merit, 1, 0);
 
-        // High-fitness should have 8x fitness advantage
-        // fitness_low = 1.0/200 = 0.005
-        // fitness_high = 4.0/100 = 0.04
-        // Ratio = 0.04/0.005 = 8x
+        // High-merit organism should get 4x more CPU cycles per update
+        // This means it reproduces 4x faster (if gestation times are similar)
 
-        // Run simulation - high fitness should reproduce more
+        // Run simulation - high merit should reproduce more
         for _ in 0..50 {
             world.update();
         }
