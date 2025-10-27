@@ -1,6 +1,10 @@
 // Import from the library instead of declaring modules
 use avida_rs::{debug, ui::AvidaApp};
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> Result<(), eframe::Error> {
     // Initialize debug system
     debug::init();
@@ -25,4 +29,31 @@ fn main() -> Result<(), eframe::Error> {
     debug::print_stats();
 
     result
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub async fn start() -> Result<(), wasm_bindgen::JsValue> {
+    // Set up panic hook for better error messages in the browser
+    console_error_panic_hook::set_once();
+
+    // Initialize debug system
+    debug::init();
+
+    let web_options = eframe::WebOptions::default();
+
+    eframe::WebRunner::new()
+        .start(
+            "avida-canvas",
+            web_options,
+            Box::new(|cc| Ok(Box::new(AvidaApp::new(cc)))),
+        )
+        .await?;
+
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // WASM entry point is handled by start() function
 }
