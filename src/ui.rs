@@ -179,9 +179,9 @@ impl eframe::App for AvidaApp {
                         if let Some(org) = self.world.get_organism(x, y) {
                             ui.label(format!("Position: ({}, {})", x, y));
                             ui.label(format!("Generation: {}", org.generation));
-                            ui.label(format!("Age: {}", org.age));
+                            ui.label(format!("Age: {}", org.age()));
                             ui.label(format!("Merit: {:.2}", org.merit));
-                            ui.label(format!("Gestation Time: {}", org.gestation_time));
+                            ui.label(format!("Gestation Cycles: {}", org.gestation_cycles));
                             ui.label(format!("Fitness: {:.4}", org.fitness()));
                             ui.label(format!("Offspring: {}", org.offspring_count));
 
@@ -269,7 +269,7 @@ impl eframe::App for AvidaApp {
                     let color = if let Some(org) = self.world.get_organism(x, y) {
                         match self.color_mode {
                             ColorMode::Age => {
-                                let intensity = ((org.age % 1000) as f32 / 1000.0 * 255.0) as u8;
+                                let intensity = ((org.age() % 1000) as f32 / 1000.0 * 255.0) as u8;
                                 Color32::from_rgb(intensity, 0, 255 - intensity)
                             }
                             ColorMode::Merit => {

@@ -8,7 +8,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 static INSTRUCTIONS_EXECUTED: AtomicU32 = AtomicU32::new(0);
 
 /// Execute a single instruction for an organism
-/// Returns true if the organism should divide
+/// Returns (should_divide, completed_task)
+/// The organism's counters (instruction_count, gestation_cycles) are incremented
 pub fn execute_instruction(
     organism: &mut Organism,
     task_detector: &mut TaskDetector,
@@ -17,18 +18,21 @@ pub fn execute_instruction(
     let mut should_divide = false;
     let mut completed_task = None;
 
-    // Track total instructions executed
+    // Track total instructions executed globally
     let inst_count = INSTRUCTIONS_EXECUTED.fetch_add(1, Ordering::Relaxed);
     if inst_count == 0 {
         crate::debug::log_event("[START] First instruction execution");
     }
 
+    // Handle skip flag from conditionals
     if organism.cpu.skip_next {
         organism.cpu.skip_next = false;
         organism.advance_ip();
+        organism.execute_instruction(); // Still counts as an instruction executed
         return (false, None);
     }
 
+    // Execute the instruction
     if let Some(inst) = organism.current_instruction() {
         match inst {
             // No-ops (a-c)
@@ -36,7 +40,7 @@ pub fn execute_instruction(
                 // No operation
             }
 
-            // Conditionals (d-e)
+            // Conditionals (d-e, y)
             Instruction::IfNEqu => {
                 // Get complement label following this instruction
                 let template_start = organism
@@ -188,7 +192,7 @@ pub fn execute_instruction(
                 organism.cpu.registers[1] = result;
             }
 
-            // I/O (q)
+            // I/O (q) - Task detection happens here
             Instruction::IO => {
                 // Output BX value
                 let output = organism.cpu.registers[1];
@@ -204,6 +208,15 @@ pub fn execute_instruction(
                         organism.merit *= multiplier;
                         organism.merit = organism.merit.min(1000.0); // Cap merit to prevent infinity
                         completed_task = Some(task);
+
+                        crate::debug::log_event(format!(
+                            "[TASK] Organism gen:{} completed {:?} - merit: {} -> {} ({}x)",
+                            organism.generation,
+                            task,
+                            organism.merit / multiplier,
+                            organism.merit,
+                            multiplier
+                        ));
                     }
                 }
 
@@ -227,10 +240,11 @@ pub fn execute_instruction(
             }
 
             Instruction::HDivide => {
+                // Check if organism is ready to divide
                 if organism.child_genome.is_some()
                     && organism.child_copy_progress >= organism.genome.len()
                 {
-                    // Divide will be handled by the world
+                    // Division will be handled by the world
                     should_divide = true;
                 }
             }
@@ -268,7 +282,6 @@ pub fn execute_instruction(
                     organism.cpu.registers[1] = 0;
                     organism.cpu.registers[2] = 0;
                     // Set flow head to next instruction (copy loop start)
-                    // mov-head will set IP to (flow_head - 1), then advance_ip adds 1 = flow_head
                     organism.cpu.flow_head = organism
                         .cpu
                         .advance_head(organism.cpu.ip, organism.genome.len());
@@ -333,9 +346,9 @@ pub fn execute_instruction(
         }
     }
 
+    // Advance IP and increment organism counters
     organism.advance_ip();
-    organism.age += 1;
-    organism.cycles_this_gestation += 1;
+    organism.execute_instruction(); // Increments instruction_count and gestation_cycles
 
     (should_divide, completed_task)
 }
@@ -351,6 +364,7 @@ mod tests {
         let (divide, _) = execute_instruction(&mut org, &mut detector, 0.0);
         assert!(!divide);
         assert_eq!(org.cpu.ip, 0); // Wrapped around
+        assert_eq!(org.instruction_count, 1); // Counter incremented
     }
 
     #[test]
@@ -363,6 +377,7 @@ mod tests {
         execute_instruction(&mut org, &mut detector, 0.0);
 
         assert_eq!(org.cpu.registers[1], 15); // BX = 10 + 5
+        assert_eq!(org.instruction_count, 1);
     }
 
     #[test]
@@ -374,6 +389,7 @@ mod tests {
         execute_instruction(&mut org, &mut detector, 0.0);
 
         assert_eq!(org.cpu.registers[1], 43);
+        assert_eq!(org.instruction_count, 1);
     }
 
     #[test]
@@ -387,10 +403,36 @@ mod tests {
         org.cpu.ip = 0;
         execute_instruction(&mut org, &mut detector, 0.0);
         assert_eq!(org.cpu.active_stack_ref().len(), 1);
+        assert_eq!(org.instruction_count, 1);
 
         // Pop
         org.cpu.registers[1] = 0; // Clear BX
         execute_instruction(&mut org, &mut detector, 0.0);
         assert_eq!(org.cpu.registers[1], 100);
+        assert_eq!(org.instruction_count, 2);
+    }
+
+    #[test]
+    fn test_instruction_counter_increments() {
+        let mut org = Organism::new(vec![Instruction::NopA, Instruction::NopB, Instruction::NopC]);
+        let mut detector = TaskDetector::new();
+
+        assert_eq!(org.instruction_count, 0);
+        execute_instruction(&mut org, &mut detector, 0.0);
+        assert_eq!(org.instruction_count, 1);
+        execute_instruction(&mut org, &mut detector, 0.0);
+        assert_eq!(org.instruction_count, 2);
+        execute_instruction(&mut org, &mut detector, 0.0);
+        assert_eq!(org.instruction_count, 3);
+    }
+
+    #[test]
+    fn test_gestation_cycles_increment() {
+        let mut org = Organism::new(vec![Instruction::NopA]);
+        let mut detector = TaskDetector::new();
+
+        assert_eq!(org.gestation_cycles, 0);
+        execute_instruction(&mut org, &mut detector, 0.0);
+        assert_eq!(org.gestation_cycles, 1);
     }
 }
