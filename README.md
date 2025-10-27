@@ -22,18 +22,20 @@ Avida-RS is a Rust reimplementation of the Avida digital evolution platform feat
 Launching the binary opens the egui interface where you can pause/play the simulation, change the update rate, and inspect individual organisms.
 
 ## Project Structure
-- `src/instruction.rs` – Instruction enum and parsing helpers
-- `src/cpu.rs` – Virtual CPU with registers, stacks, and execution heads
-- `src/organism.rs` – Organism state, genome storage, and replication logic
-- `src/world.rs` – Population grid, scheduler, and mutation handling
-- `src/tasks.rs` – Logic task detection and merit rewards
-- `src/ui.rs` – egui front-end and control panels
+- `src/main.rs` – Application entry point that launches the egui visualizer.
+- `src/lib.rs` – Module exports shared by the main and debug binaries.
+- `src/bin/debug_test.rs` – Diagnostics-oriented binary for targeted experiments.
+- `src/instruction.rs` – Instruction enum and parsing helpers.
+- `src/cpu.rs` – Virtual CPU with registers, stacks, and execution heads.
+- `src/execute.rs` – Instruction execution pipeline connecting organisms with tasks.
+- `src/organism.rs` – Organism state, genome storage, and replication logic.
+- `src/world.rs` – Population grid, scheduler, and mutation handling.
+- `src/tasks.rs` – Logic task detection and merit rewards.
+- `src/ui.rs` – egui front-end and control panels.
+- `src/debug.rs` – Logging and tracing utilities used by the simulator.
+- `src/diagnostics.rs` – Population analysis helpers and reporting utilities.
 
 ## Documentation
-Additional reference material lives alongside the repository:
-- `QUICKSTART.md` – Step-by-step usage and interface overview
-- `OPTIMIZATIONS.md` – Ideas for future performance and feature work
-- `SESSION_SUMMARY.md` – Recent development context and follow-up items
-- `FIX_SUMMARY.md` – Latest resolved issues and verification notes
+This README provides the primary quickstart. Module-level Rustdoc comments and examples in `src/bin/debug_test.rs` and `src/diagnostics.rs` document the latest inspection and analysis tools.
 
 Contributions, issue reports, and experiment write-ups are welcome!
