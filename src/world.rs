@@ -4,6 +4,7 @@ use crate::tasks::{TaskDetector, TaskEnvironment};
 use std::sync::atomic::{AtomicU32, Ordering};
 use rand::SeedableRng;
 use rand::rngs::SmallRng;
+#[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 
 const WORLD_WIDTH: usize = 60;
@@ -212,8 +213,13 @@ impl World {
     pub fn update(&mut self) {
         let pop_before = self.population_size;
 
-        // Calculate total fitness (parallel) - this is the key to selection pressure!
+        // Calculate total fitness (parallel on native, sequential on wasm) - this is the key to selection pressure!
+        #[cfg(not(target_arch = "wasm32"))]
         let total_fitness: f64 = self.grid.par_iter()
+            .filter_map(|cell| cell.as_ref().map(|org| org.fitness()))
+            .sum();
+        #[cfg(target_arch = "wasm32")]
+        let total_fitness: f64 = self.grid.iter()
             .filter_map(|cell| cell.as_ref().map(|org| org.fitness()))
             .sum();
 
@@ -397,13 +403,23 @@ impl World {
     }
 
     /// Count current population (parallel)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn count_population(&self) -> usize {
         self.grid.par_iter()
             .filter(|cell| cell.is_some())
             .count()
     }
 
+    /// Count current population (sequential on wasm)
+    #[cfg(target_arch = "wasm32")]
+    pub fn count_population(&self) -> usize {
+        self.grid.iter()
+            .filter(|cell| cell.is_some())
+            .count()
+    }
+
     /// Get statistics about tasks completed (parallel)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn task_statistics(&self) -> [usize; 9] {
         self.grid.par_iter()
             .filter_map(|cell| cell.as_ref())
@@ -429,7 +445,22 @@ impl World {
             )
     }
 
+    /// Get statistics about tasks completed (sequential on wasm)
+    #[cfg(target_arch = "wasm32")]
+    pub fn task_statistics(&self) -> [usize; 9] {
+        let mut counts = [0usize; 9];
+        for org in self.grid.iter().filter_map(|cell| cell.as_ref()) {
+            for task_idx in 0u8..9 {
+                if org.has_completed_task(task_idx) {
+                    counts[task_idx as usize] += 1;
+                }
+            }
+        }
+        counts
+    }
+
     /// Get average genome size (parallel)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn average_genome_size(&self) -> f64 {
         let (total, count) = self.grid.par_iter()
             .filter_map(|cell| cell.as_ref())
@@ -446,7 +477,25 @@ impl World {
         }
     }
 
+    /// Get average genome size (sequential on wasm)
+    #[cfg(target_arch = "wasm32")]
+    pub fn average_genome_size(&self) -> f64 {
+        let mut total = 0usize;
+        let mut count = 0usize;
+        for org in self.grid.iter().filter_map(|cell| cell.as_ref()) {
+            total += org.genome_size();
+            count += 1;
+        }
+
+        if count > 0 {
+            total as f64 / count as f64
+        } else {
+            0.0
+        }
+    }
+
     /// Get average merit (parallel)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn average_merit(&self) -> f64 {
         let (total, count) = self.grid.par_iter()
             .filter_map(|cell| cell.as_ref())
@@ -463,8 +512,26 @@ impl World {
         }
     }
 
+    /// Get average merit (sequential on wasm)
+    #[cfg(target_arch = "wasm32")]
+    pub fn average_merit(&self) -> f64 {
+        let mut total = 0.0f64;
+        let mut count = 0usize;
+        for org in self.grid.iter().filter_map(|cell| cell.as_ref()) {
+            total += org.merit;
+            count += 1;
+        }
+
+        if count > 0 {
+            total / count as f64
+        } else {
+            0.0
+        }
+    }
+
     /// Get average fitness (parallel)
     /// Fitness = merit / gestation_time (higher is better)
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn average_fitness(&self) -> f64 {
         let (total, count) = self.grid.par_iter()
             .filter_map(|cell| cell.as_ref())
@@ -473,6 +540,24 @@ impl World {
                 || (0.0, 0),
                 |acc, val| (acc.0 + val.0, acc.1 + val.1)
             );
+
+        if count > 0 {
+            total / count as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Get average fitness (sequential on wasm)
+    /// Fitness = merit / gestation_time (higher is better)
+    #[cfg(target_arch = "wasm32")]
+    pub fn average_fitness(&self) -> f64 {
+        let mut total = 0.0f64;
+        let mut count = 0usize;
+        for org in self.grid.iter().filter_map(|cell| cell.as_ref()) {
+            total += org.fitness();
+            count += 1;
+        }
 
         if count > 0 {
             total / count as f64
