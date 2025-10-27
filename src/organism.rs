@@ -92,6 +92,46 @@ impl Organism {
         Self::new(genome)
     }
 
+    /// Create a task-capable ancestor with "junk DNA" for evolution
+    /// This ancestor can replicate AND has raw material for evolving tasks
+    ///
+    /// Structure:
+    /// - Core replication machinery (same as default ancestor)
+    /// - Task-performing "junk DNA" in padding area that provides:
+    ///   * I/O instructions for input/output
+    ///   * Arithmetic instructions (add, sub, nand)
+    ///   * Stack operations for value manipulation
+    ///
+    /// These extra instructions don't interfere with replication but provide
+    /// raw genetic material that evolution can work with.
+    pub fn ancestor_with_tasks() -> Self {
+        // The strategy: keep replication core intact, add task instructions in padding
+        //
+        // Replication core: rutyabsva (9 instructions)
+        // Task junk DNA: gqfgqpgqnoccccccccccccccccccccccccccccc (41 instructions)
+        //   g - push (save value)
+        //   q - IO (input/output)
+        //   f - pop (retrieve value)
+        //   p - nand (logic operation)
+        //   n - add
+        //   o - sub
+        // End marker: bc (2 instructions)
+        //
+        // During replication, after h-divide and mov-head jump back to copy loop,
+        // the task instructions might execute. They won't break replication because:
+        // - IO just reads/writes values
+        // - Arithmetic modifies registers but doesn't affect memory heads
+        // - Stack ops are non-destructive
+        //
+        // BUT they provide the building blocks for task evolution!
+
+        let genome_str = "rutyabsvagqfgqpgqnocccccccccccccccccccccccccccccbc";
+
+        let genome = crate::instruction::parse_genome(genome_str)
+            .expect("Task-capable ancestor genome should be valid");
+        Self::new(genome)
+    }
+
     /// Get the current instruction at IP
     pub fn current_instruction(&self) -> Option<Instruction> {
         self.genome.get(self.cpu.ip).copied()
@@ -273,31 +313,34 @@ impl Organism {
         child_genome.truncate(progress);
         let size_before_mutations = child_genome.len();
 
-        // Apply insertion and deletion mutations
+        // Apply insertion and deletion mutations (CANONICAL AVIDA STYLE)
+        // insertion_rate/deletion_rate is the probability of ONE mutation per division
+        // NOT per-instruction! This matches DIVIDE_INS_PROB and DIVIDE_DEL_PROB
         let mut insertions = 0;
         let mut deletions = 0;
-        let mut i = 0;
-        while i < child_genome.len() {
-            let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
-            // Deletion mutation
-            if rng.gen::<f64>() < deletion_rate {
-                child_genome.remove(i);
-                deletions += 1;
-                continue;
+        // Single deletion check per division
+        if !child_genome.is_empty() && rng.gen::<f64>() < deletion_rate {
+            // Choose random position to delete
+            let pos = rng.gen_range(0..child_genome.len());
+            child_genome.remove(pos);
+            deletions = 1;
+        }
+
+        // Single insertion check per division
+        if rng.gen::<f64>() < insertion_rate {
+            // Choose random position to insert
+            let pos = if child_genome.is_empty() {
+                0
+            } else {
+                rng.gen_range(0..=child_genome.len())
+            };
+            let random_char = (b'a' + rng.gen_range(0..26)) as char;
+            if let Some(inst) = Instruction::from_char(random_char) {
+                child_genome.insert(pos, inst);
+                insertions = 1;
             }
-
-            // Insertion mutation
-            if rng.gen::<f64>() < insertion_rate {
-                let random_char = (b'a' + rng.gen_range(0..26)) as char;
-                if let Some(inst) = Instruction::from_char(random_char) {
-                    child_genome.insert(i, inst);
-                    insertions += 1;
-                    i += 1;
-                }
-            }
-
-            i += 1;
         }
 
         // Ensure minimum genome size
@@ -332,6 +375,9 @@ impl Organism {
 
         // Update parent
         self.offspring_count += 1;
+
+        // Update gestation time based on actual cycles used this replication
+        self.update_gestation_time();
         self.cycles_this_gestation = 0;
 
         // Reset CPU state for next replication cycle
@@ -367,6 +413,23 @@ impl Organism {
     /// Get the size of the genome
     pub fn genome_size(&self) -> usize {
         self.genome.len()
+    }
+
+    /// Calculate fitness (canonical Avida: fitness = merit / gestation_time)
+    /// Higher fitness = faster reproduction = more offspring per unit time
+    pub fn fitness(&self) -> f64 {
+        if self.gestation_time == 0 {
+            return self.merit; // Avoid division by zero
+        }
+        self.merit / (self.gestation_time as f64)
+    }
+
+    /// Update gestation time based on actual execution
+    /// Call this after successful division to set expected gestation for next cycle
+    pub fn update_gestation_time(&mut self) {
+        if self.cycles_this_gestation > 0 {
+            self.gestation_time = self.cycles_this_gestation;
+        }
     }
 }
 
@@ -693,8 +756,9 @@ mod tests {
         }
 
         let offspring = org.divide(1.0, 0.0).unwrap(); // 100% insertion rate
-        // Genome should be larger than original due to insertions
-        assert!(offspring.genome_size() >= 50);
+        // With canonical Avida mutation: 100% rate means ONE insertion will occur
+        // Genome should be exactly 1 instruction larger (50 + 1 = 51)
+        assert_eq!(offspring.genome_size(), 51);
     }
 
     #[test]
@@ -706,25 +770,65 @@ mod tests {
             org.copy_instruction(0.0);
         }
 
-        let offspring = org.divide(0.0, 0.5).unwrap(); // 50% deletion rate
-        // Genome should be smaller, but at least 1 instruction
-        assert!(offspring.genome_size() >= 1);
-        assert!(offspring.genome_size() <= 50);
+        let offspring = org.divide(0.0, 1.0).unwrap(); // 100% deletion rate
+        // With canonical Avida mutation: 100% rate means ONE deletion will occur
+        // Genome should be exactly 1 instruction smaller (50 - 1 = 49)
+        assert_eq!(offspring.genome_size(), 49);
     }
 
     #[test]
     fn test_empty_genome_after_deletions_gets_nop() {
-        let mut org = Organism::new(vec![Instruction::NopA; 3]);
+        let mut org = Organism::new(vec![Instruction::NopA; 1]);
         org.allocate_child();
 
-        for _ in 0..3 {
+        for _ in 0..1 {
             org.copy_instruction(0.0);
         }
 
         let offspring = org.divide(0.0, 1.0).unwrap(); // 100% deletion rate
-        // Should have at least NopC added
+        // If genome becomes empty after deletion, NopC should be added
         assert_eq!(offspring.genome_size(), 1);
         assert_eq!(offspring.genome[0], Instruction::NopC);
+    }
+
+    #[test]
+    fn test_divide_with_both_indels() {
+        let mut org = Organism::ancestor();
+        org.allocate_child();
+
+        for _ in 0..50 {
+            org.copy_instruction(0.0);
+        }
+
+        // With 100% rates, both insertion and deletion will occur
+        // Net change: +1 -1 = 0, so size should be 50
+        let offspring = org.divide(1.0, 1.0).unwrap();
+        assert_eq!(offspring.genome_size(), 50);
+    }
+
+    #[test]
+    fn test_divide_with_low_indel_rates() {
+        // Test that low rates mean MOST offspring have no mutations
+        let mut unchanged_count = 0;
+        let trials = 100;
+
+        for _ in 0..trials {
+            let mut org = Organism::ancestor();
+            org.allocate_child();
+
+            for _ in 0..50 {
+                org.copy_instruction(0.0);
+            }
+
+            let offspring = org.divide(0.05, 0.05).unwrap();
+            if offspring.genome_size() == 50 {
+                unchanged_count += 1;
+            }
+        }
+
+        // With 0.05 rates, about 90% should be unchanged (1-0.05-0.05 = 0.9)
+        // Allow some variance, expect at least 75% unchanged
+        assert!(unchanged_count >= 75, "Expected most genomes unchanged with 0.05 rates, got {}/100", unchanged_count);
     }
 
     #[test]
@@ -745,5 +849,64 @@ mod tests {
         assert_eq!(org.genome.len(), cloned.genome.len());
         assert_eq!(org.merit, cloned.merit);
         assert_eq!(org.generation, cloned.generation);
+    }
+
+    #[test]
+    fn test_fitness_calculation() {
+        let mut org = Organism::ancestor();
+        org.merit = 2.0;
+        org.gestation_time = 100;
+
+        // Fitness = merit / gestation_time
+        assert_eq!(org.fitness(), 0.02);
+    }
+
+    #[test]
+    fn test_fitness_with_high_merit() {
+        let mut org = Organism::ancestor();
+        org.merit = 16.0;  // As if completed XOR task
+        org.gestation_time = 100;
+
+        // High merit = high fitness = faster reproduction
+        assert_eq!(org.fitness(), 0.16);
+    }
+
+    #[test]
+    fn test_fitness_comparison() {
+        let mut org1 = Organism::ancestor();
+        org1.merit = 2.0;
+        org1.gestation_time = 100;
+
+        let mut org2 = Organism::ancestor();
+        org2.merit = 1.0;
+        org2.gestation_time = 100;
+
+        // org1 has higher merit, should have higher fitness
+        assert!(org1.fitness() > org2.fitness());
+    }
+
+    #[test]
+    fn test_gestation_time_update() {
+        let mut org = Organism::ancestor();
+        org.cycles_this_gestation = 150;
+
+        org.update_gestation_time();
+
+        assert_eq!(org.gestation_time, 150);
+    }
+
+    #[test]
+    fn test_fitness_after_task_completion() {
+        let mut org = Organism::ancestor();
+        org.merit = 1.0;
+        org.gestation_time = 100;
+        let fitness_before = org.fitness();
+
+        // Simulate completing NOT task (2x merit bonus)
+        org.merit *= 2.0;
+        let fitness_after = org.fitness();
+
+        // Fitness should double with merit
+        assert_eq!(fitness_after, fitness_before * 2.0);
     }
 }

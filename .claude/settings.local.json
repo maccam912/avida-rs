@@ -9,7 +9,9 @@
       "Bash(cargo build:*)",
       "Bash(cargo test:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "WebFetch(domain:www.ncbi.nlm.nih.gov)",
+      "WebFetch(domain:pmc.ncbi.nlm.nih.gov)"
     ],
     "deny": [],
     "ask": []

@@ -16,6 +16,7 @@ pub struct AvidaApp {
 pub enum ColorMode {
     Age,
     Merit,
+    Fitness,
     GenomeSize,
     Tasks,
 }
@@ -71,6 +72,11 @@ impl eframe::App for AvidaApp {
                     self.world.inject_ancestor();
                 }
 
+                if ui.button("Reset (Tasks)").clicked() {
+                    self.world.clear();
+                    self.world.inject_ancestor_with_tasks();
+                }
+
                 ui.separator();
 
                 ui.label(format!("Updates: {}", self.world.total_updates));
@@ -91,6 +97,7 @@ impl eframe::App for AvidaApp {
             ui.add_space(10.0);
             ui.label(format!("Avg Genome Size: {:.1}", self.world.average_genome_size()));
             ui.label(format!("Avg Merit: {:.2}", self.world.average_merit()));
+            ui.label(format!("Avg Fitness: {:.4}", self.world.average_fitness()));
 
             ui.add_space(10.0);
             ui.separator();
@@ -137,6 +144,7 @@ impl eframe::App for AvidaApp {
 
             ui.radio_value(&mut self.color_mode, ColorMode::Age, "Age");
             ui.radio_value(&mut self.color_mode, ColorMode::Merit, "Merit");
+            ui.radio_value(&mut self.color_mode, ColorMode::Fitness, "Fitness");
             ui.radio_value(&mut self.color_mode, ColorMode::GenomeSize, "Genome Size");
             ui.radio_value(&mut self.color_mode, ColorMode::Tasks, "Tasks Completed");
 
@@ -156,6 +164,8 @@ impl eframe::App for AvidaApp {
                         ui.label(format!("Generation: {}", org.generation));
                         ui.label(format!("Age: {}", org.age));
                         ui.label(format!("Merit: {:.2}", org.merit));
+                        ui.label(format!("Gestation Time: {}", org.gestation_time));
+                        ui.label(format!("Fitness: {:.4}", org.fitness()));
                         ui.label(format!("Offspring: {}", org.offspring_count));
 
                         ui.add_space(10.0);
@@ -242,6 +252,17 @@ impl eframe::App for AvidaApp {
                             ColorMode::Merit => {
                                 let intensity = (org.merit.log2().max(0.0).min(8.0) / 8.0 * 255.0) as u8;
                                 Color32::from_rgb(intensity, intensity, 0)
+                            }
+                            ColorMode::Fitness => {
+                                // Fitness visualization: higher fitness = brighter
+                                // Log scale to handle wide range of fitness values
+                                let fitness = org.fitness();
+                                let intensity = if fitness > 0.0 {
+                                    ((fitness * 100.0).log10().max(-2.0).min(2.0) + 2.0) / 4.0 * 255.0
+                                } else {
+                                    0.0
+                                } as u8;
+                                Color32::from_rgb(intensity, 0, intensity)  // Purple: high fitness
                             }
                             ColorMode::GenomeSize => {
                                 let size_diff = org.genome_size() as i32 - 50;

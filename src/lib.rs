@@ -9,3 +9,4 @@ pub mod tasks;
 pub mod world;
 pub mod ui;
 pub mod debug;
+pub mod diagnostics;

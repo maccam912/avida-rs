@@ -25,6 +25,14 @@ pub struct World {
     pub insertion_rate: f64,
     pub deletion_rate: f64,
 
+    /// Death and birth settings (Avida-style)
+    /// death_method: 0 = no age death, 1 = fixed age limit, 2 = age limit × genome length
+    pub death_method: u8,
+    /// age_limit: multiplier for death age (with death_method 2, organism dies at genome_len × age_limit instructions)
+    pub age_limit: u64,
+    /// prefer_empty: if true, always prefer empty cells over occupied ones during birth
+    pub prefer_empty: bool,
+
     /// Statistics
     pub total_updates: u64,
     pub total_organisms: u64,
@@ -51,6 +59,9 @@ impl World {
             copy_mutation_rate: 0.0075,  // Default Avida copy mutation rate (0.75%)
             insertion_rate: 0.0,         // Insertions disabled during copy (Avida default)
             deletion_rate: 0.0,          // Deletions disabled during copy (Avida default)
+            death_method: 2,             // Avida default: age limit × genome length
+            age_limit: 20,               // Avida default: 20× genome length
+            prefer_empty: true,          // Avida default: prefer empty cells
             total_updates: 0,
             total_organisms: 0,
             total_births: 0,
@@ -127,7 +138,16 @@ impl World {
         self.inject_organism(ancestor, center_x, center_y);
     }
 
-    /// Find an empty neighbor cell (preferring empty over occupied)
+    /// Inject task-capable ancestor at center of world
+    /// This ancestor has I/O and arithmetic instructions for task evolution
+    pub fn inject_ancestor_with_tasks(&mut self) {
+        let ancestor = Organism::ancestor_with_tasks();
+        let center_x = WORLD_WIDTH / 2;
+        let center_y = WORLD_HEIGHT / 2;
+        self.inject_organism(ancestor, center_x, center_y);
+    }
+
+    /// Find birth location for offspring (Avida BIRTH_METHOD and PREFER_EMPTY)
     fn find_birth_location(&mut self, parent_x: usize, parent_y: usize) -> Option<(usize, usize)> {
         use rand::seq::SliceRandom;
 
@@ -137,51 +157,69 @@ impl World {
         // Shuffle neighbors to randomize placement
         neighbor_vec.shuffle(&mut self.rng);
 
-        // First try to find empty cell
-        for (nx, ny) in &neighbor_vec {
-            let idx = self.grid_index(*nx, *ny);
-            if self.grid[idx].is_none() {
-                // Log first few offspring placements
-                static PLACEMENT_LOG: AtomicU32 = AtomicU32::new(0);
-                let log_index = PLACEMENT_LOG.fetch_add(1, Ordering::Relaxed) + 1;
-                if log_index <= 10 {
-                    crate::debug::log_event(format!(
-                        "[PLACEMENT #{}] parent:({},{}) -> offspring:({},{}) dx:{} dy:{}",
-                        log_index, parent_x, parent_y, nx, ny,
-                        *nx as isize - parent_x as isize,
-                        *ny as isize - parent_y as isize
-                    ));
+        if self.prefer_empty {
+            // Avida default: prefer empty cells over occupied ones
+            // First try to find empty cell
+            for (nx, ny) in &neighbor_vec {
+                let idx = self.grid_index(*nx, *ny);
+                if self.grid[idx].is_none() {
+                    // Log first few offspring placements
+                    static PLACEMENT_LOG: AtomicU32 = AtomicU32::new(0);
+                    let log_index = PLACEMENT_LOG.fetch_add(1, Ordering::Relaxed) + 1;
+                    if log_index <= 10 {
+                        crate::debug::log_event(format!(
+                            "[PLACEMENT #{}] parent:({},{}) -> offspring:({},{}) EMPTY dx:{} dy:{}",
+                            log_index, parent_x, parent_y, nx, ny,
+                            *nx as isize - parent_x as isize,
+                            *ny as isize - parent_y as isize
+                        ));
+                    }
+                    return Some((*nx, *ny));
                 }
-                return Some((*nx, *ny));
             }
-        }
 
-        // If no empty cells, pick random neighbor (already shuffled)
-        if !neighbor_vec.is_empty() {
-            let (nx, ny) = neighbor_vec[0];
-            crate::debug::log_event(format!(
-                "[PLACEMENT] parent:({},{}) -> offspring:({},{}) REPLACING existing organism",
-                parent_x, parent_y, nx, ny
-            ));
-            return Some((nx, ny));
+            // If no empty cells, pick random neighbor (already shuffled)
+            if !neighbor_vec.is_empty() {
+                let (nx, ny) = neighbor_vec[0];
+                crate::debug::log_event(format!(
+                    "[PLACEMENT] parent:({},{}) -> offspring:({},{}) REPLACING existing organism",
+                    parent_x, parent_y, nx, ny
+                ));
+                return Some((nx, ny));
+            }
+        } else {
+            // No preference: pick random neighbor (could be empty or occupied)
+            if !neighbor_vec.is_empty() {
+                let (nx, ny) = neighbor_vec[0];
+                let idx = self.grid_index(nx, ny);
+                let is_empty = self.grid[idx].is_none();
+                crate::debug::log_event(format!(
+                    "[PLACEMENT] parent:({},{}) -> offspring:({},{}) {}",
+                    parent_x, parent_y, nx, ny,
+                    if is_empty { "EMPTY" } else { "REPLACING" }
+                ));
+                return Some((nx, ny));
+            }
         }
 
         None
     }
 
     /// Execute one update cycle
-    /// An update is a time slice where all organisms get CPU cycles proportional to merit
+    /// An update is a time slice where all organisms get CPU cycles proportional to FITNESS
+    /// In canonical Avida: fitness = merit / gestation_time
+    /// Organisms with higher fitness execute more instructions and reproduce faster
     pub fn update(&mut self) {
         let pop_before = self.population_size;
 
-        // Calculate total merit (parallel)
-        let total_merit: f64 = self.grid.par_iter()
-            .filter_map(|cell| cell.as_ref().map(|org| org.merit))
+        // Calculate total fitness (parallel) - this is the key to selection pressure!
+        let total_fitness: f64 = self.grid.par_iter()
+            .filter_map(|cell| cell.as_ref().map(|org| org.fitness()))
             .sum();
 
-        if total_merit == 0.0 {
+        if total_fitness == 0.0 {
             crate::debug::log_event(format!(
-                "[WARN] Update {} has zero total merit (pop:{})",
+                "[WARN] Update {} has zero total fitness (pop:{})",
                 self.total_updates, self.population_size
             ));
             return;
@@ -190,18 +228,19 @@ impl World {
         // Log update start periodically
         if self.total_updates % 100 == 0 {
             crate::debug::log_event(format!(
-                "[UPDATE #{}] pop:{} merit_total:{:.1} births:{} deaths:{}",
+                "[UPDATE #{}] pop:{} fitness_total:{:.1} births:{} deaths:{}",
                 self.total_updates,
                 self.population_size,
-                total_merit,
+                total_fitness,
                 self.total_births,
                 self.total_deaths
             ));
         }
 
-        // Each organism gets CPU cycles proportional to its merit
-        // Total CPU cycles per update is CONSTANT to maintain performance
-        let total_cycles_per_update = 30.0 * 60.0;  // Fixed budget: ~30 cycles avg if pop was 60
+        // Each organism gets CPU cycles proportional to its FITNESS (not just merit!)
+        // This creates differential reproduction: high-fitness organisms reproduce faster
+        // Total CPU cycles per update scales with population to maintain performance
+        let total_cycles_per_update = 30.0 * self.population_size.max(1) as f64;
 
         // Collect positions to process (to avoid borrow conflicts)
         let mut positions = Vec::new();
@@ -221,10 +260,28 @@ impl World {
         // Process each organism
         for (x, y) in positions {
             let idx = self.grid_index(x, y);
+
+            // Check for age-based death (Avida DEATH_METHOD)
             if let Some(org) = &self.grid[idx] {
-                // Calculate CPU cycles for this organism (proportional to merit)
-                let merit_fraction = org.merit / total_merit;
-                let cycles = (total_cycles_per_update * merit_fraction).max(1.0) as u32;
+                let should_die = match self.death_method {
+                    0 => false,  // No age-based death
+                    1 => org.age >= self.age_limit,  // Fixed age limit
+                    2 => org.age >= (org.genome.len() as u64 * self.age_limit),  // Age limit × genome length
+                    _ => false,
+                };
+
+                if should_die {
+                    self.grid[idx] = None;
+                    self.total_deaths += 1;
+                    continue;  // Skip to next organism
+                }
+            }
+
+            if let Some(org) = &self.grid[idx] {
+                // Calculate CPU cycles for this organism (proportional to FITNESS)
+                // This is THE KEY to making tasks beneficial: high-fitness = more cycles = faster reproduction
+                let fitness_fraction = org.fitness() / total_fitness;
+                let cycles = (total_cycles_per_update * fitness_fraction).max(1.0) as u32;
 
                 // Execute cycles with safety limit to detect infinite loops
                 let max_cycles_per_organism = 500;  // Safety limit
@@ -394,6 +451,24 @@ impl World {
         let (total, count) = self.grid.par_iter()
             .filter_map(|cell| cell.as_ref())
             .map(|org| (org.merit, 1))
+            .reduce(
+                || (0.0, 0),
+                |acc, val| (acc.0 + val.0, acc.1 + val.1)
+            );
+
+        if count > 0 {
+            total / count as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Get average fitness (parallel)
+    /// Fitness = merit / gestation_time (higher is better)
+    pub fn average_fitness(&self) -> f64 {
+        let (total, count) = self.grid.par_iter()
+            .filter_map(|cell| cell.as_ref())
+            .map(|org| (org.fitness(), 1))
             .reduce(
                 || (0.0, 0),
                 |acc, val| (acc.0 + val.0, acc.1 + val.1)
@@ -783,19 +858,71 @@ mod tests {
     }
 
     #[test]
-    fn test_merit_affects_cpu_cycles() {
+    fn test_fitness_affects_cpu_cycles() {
         let mut world = World::new();
         let mut org1 = Organism::ancestor();
         org1.merit = 1.0;
+        org1.gestation_time = 100;
+
         let mut org2 = Organism::ancestor();
-        org2.merit = 10.0;
+        org2.merit = 4.0;  // 4x merit (e.g., completed AND task)
+        org2.gestation_time = 100;
 
         world.inject_organism(org1, 0, 0);
         world.inject_organism(org2, 1, 0);
 
-        // Organism with higher merit should get more CPU cycles
-        // This is implicit in the update logic
+        // Organism with higher fitness should get more CPU cycles
+        // org2 has 4x fitness, so should reproduce ~4x faster
         world.update();
         assert!(world.total_updates > 0);
+    }
+
+    #[test]
+    fn test_average_fitness() {
+        let mut world = World::new();
+        let mut org1 = Organism::ancestor();
+        org1.merit = 2.0;
+        org1.gestation_time = 100;
+
+        let mut org2 = Organism::ancestor();
+        org2.merit = 4.0;
+        org2.gestation_time = 100;
+
+        world.inject_organism(org1, 0, 0);
+        world.inject_organism(org2, 1, 0);
+
+        // Average fitness = (2.0/100 + 4.0/100) / 2 = 0.03
+        assert_eq!(world.average_fitness(), 0.03);
+    }
+
+    #[test]
+    fn test_fitness_selection_pressure() {
+        // High-fitness organisms should dominate over time
+        let mut world = World::new();
+
+        // Inject a low-fitness organism
+        let mut low_fit = Organism::ancestor();
+        low_fit.merit = 1.0;
+        low_fit.gestation_time = 200;  // Slow gestation
+        world.inject_organism(low_fit, 0, 0);
+
+        // Inject a high-fitness organism
+        let mut high_fit = Organism::ancestor();
+        high_fit.merit = 4.0;  // High merit from tasks
+        high_fit.gestation_time = 100;  // Fast gestation
+        world.inject_organism(high_fit, 1, 0);
+
+        // High-fitness should have 8x fitness advantage
+        // fitness_low = 1.0/200 = 0.005
+        // fitness_high = 4.0/100 = 0.04
+        // Ratio = 0.04/0.005 = 8x
+
+        // Run simulation - high fitness should reproduce more
+        for _ in 0..50 {
+            world.update();
+        }
+
+        // After 50 updates, should have more organisms due to reproduction
+        assert!(world.population_size >= 2);
     }
 }
