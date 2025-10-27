@@ -216,29 +216,29 @@ impl World {
     }
 
     /// Execute one update cycle
-    /// An update is a time slice where all organisms get CPU cycles proportional to FITNESS
-    /// In canonical Avida: fitness = merit / gestation_time
-    /// Organisms with higher fitness execute more instructions and reproduce faster
+    /// An update is a time slice where all organisms get CPU cycles proportional to MERIT
+    /// Total CPU cycles in an update scales with population size
+    /// Organisms with higher merit execute more instructions and reproduce faster
     pub fn update(&mut self) {
         let pop_before = self.population_size;
 
-        // Calculate total fitness (parallel on native, sequential on wasm) - this is the key to selection pressure!
+        // Calculate total merit (parallel on native, sequential on wasm)
         #[cfg(not(target_arch = "wasm32"))]
-        let total_fitness: f64 = self
+        let total_merit: f64 = self
             .grid
             .par_iter()
-            .filter_map(|cell| cell.as_ref().map(|org| org.fitness()))
+            .filter_map(|cell| cell.as_ref().map(|org| org.merit))
             .sum();
         #[cfg(target_arch = "wasm32")]
-        let total_fitness: f64 = self
+        let total_merit: f64 = self
             .grid
             .iter()
-            .filter_map(|cell| cell.as_ref().map(|org| org.fitness()))
+            .filter_map(|cell| cell.as_ref().map(|org| org.merit))
             .sum();
 
-        if total_fitness == 0.0 {
+        if total_merit == 0.0 {
             crate::debug::log_event(format!(
-                "[WARN] Update {} has zero total fitness (pop:{})",
+                "[WARN] Update {} has zero total merit (pop:{})",
                 self.total_updates, self.population_size
             ));
             return;
@@ -247,19 +247,20 @@ impl World {
         // Log update start periodically
         if self.total_updates % 100 == 0 {
             crate::debug::log_event(format!(
-                "[UPDATE #{}] pop:{} fitness_total:{:.1} births:{} deaths:{}",
+                "[UPDATE #{}] pop:{} merit_total:{:.1} births:{} deaths:{}",
                 self.total_updates,
                 self.population_size,
-                total_fitness,
+                total_merit,
                 self.total_births,
                 self.total_deaths
             ));
         }
 
-        // Each organism gets CPU cycles proportional to its FITNESS (not just merit!)
-        // This creates differential reproduction: high-fitness organisms reproduce faster
+        // Each organism gets CPU cycles proportional to its MERIT
+        // This creates differential reproduction: high-merit organisms reproduce faster
         // Total CPU cycles per update scales with population to maintain performance
         let total_cycles_per_update = 30.0 * self.population_size.max(1) as f64;
+        let cycles_per_merit = total_cycles_per_update / total_merit;
 
         // Collect positions to process (to avoid borrow conflicts)
         let mut positions = Vec::new();
@@ -297,10 +298,9 @@ impl World {
             }
 
             if let Some(org) = &self.grid[idx] {
-                // Calculate CPU cycles for this organism (proportional to FITNESS)
-                // This is THE KEY to making tasks beneficial: high-fitness = more cycles = faster reproduction
-                let fitness_fraction = org.fitness() / total_fitness;
-                let cycles = (total_cycles_per_update * fitness_fraction).max(1.0) as u32;
+                // Calculate CPU cycles for this organism (proportional to MERIT)
+                // Higher merit = more cycles = faster reproduction
+                let cycles = (cycles_per_merit * org.merit).max(1.0) as u32;
 
                 // Execute cycles with safety limit to detect infinite loops
                 let max_cycles_per_organism = 500; // Safety limit
