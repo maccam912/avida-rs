@@ -86,14 +86,16 @@ pub fn execute_instruction(
                     .filter_map(|inst| inst.complement_nop())
                     .collect();
 
+                let has_valid_label = template_len > 0 && complement.len() == template_len;
+
                 // Check if last_copied_label ENDS WITH the complement (not exact match)
-                let matches = if complement.is_empty()
-                    || organism.cpu.last_copied_label.len() < complement.len()
+                let matches = if has_valid_label
+                    && organism.cpu.last_copied_label.len() >= complement.len()
                 {
-                    false
-                } else {
                     let start = organism.cpu.last_copied_label.len() - complement.len();
                     organism.cpu.last_copied_label[start..] == complement[..]
+                } else {
+                    false
                 };
 
                 static LABEL_COUNT: AtomicU32 = AtomicU32::new(0);
@@ -107,7 +109,7 @@ pub fn execute_instruction(
                         .collect();
                     let comp_str: String = complement.iter().map(|i| i.to_char()).collect();
                     crate::debug::log_event(format!(
-                        "[IF-LABEL #{}] last_copied:'{}' template:'{}' match:{} skip:{}",
+                        "[IF-LABEL #{}] last_copied:'{}' template:'{}' valid:{} match:{} skip:{}",
                         label_count,
                         if label_str.len() > 8 {
                             &label_str[label_str.len() - 8..]
@@ -115,8 +117,9 @@ pub fn execute_instruction(
                             &label_str
                         },
                         comp_str,
+                        has_valid_label,
                         matches,
-                        !matches
+                        has_valid_label && !matches
                     ));
                 }
 
@@ -127,7 +130,7 @@ pub fn execute_instruction(
                         .advance_head(organism.cpu.ip, organism.genome.len());
                 }
 
-                if !matches {
+                if has_valid_label && !matches {
                     organism.cpu.skip_next = true;
                 }
             }
@@ -456,5 +459,27 @@ mod tests {
                 "minimal rts genome should not be able to divide"
             );
         }
+    }
+
+    #[test]
+    fn test_minimal_rtsy_genome_does_not_divide() {
+        use crate::instruction::parse_genome;
+
+        let genome = parse_genome("rtsy").expect("valid minimal genome");
+        let mut org = Organism::new(genome);
+        let mut detector = TaskDetector::new();
+
+        let mut divided = false;
+        for _ in 0..500 {
+            let (should_divide, _) = execute_instruction(&mut org, &mut detector, 0.0);
+            if should_divide {
+                if org.divide(0.0, 0.0).is_some() {
+                    divided = true;
+                    break;
+                }
+            }
+        }
+
+        assert!(!divided, "minimal rtsy genome should not be able to divide");
     }
 }
