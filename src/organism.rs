@@ -1,6 +1,8 @@
 use crate::cpu::CPU;
 use crate::instruction::Instruction;
 
+pub const MINIMUM_GENOME_SIZE: usize = 15;
+
 /// Represents a digital organism in Avida
 #[derive(Debug, Clone)]
 pub struct Organism {
@@ -296,6 +298,17 @@ impl Organism {
             crate::debug::log_event("[WARN] Child genome was empty after mutations, added NopC");
         }
 
+        let mut padded = false;
+        if child_genome.len() < MINIMUM_GENOME_SIZE {
+            let missing = MINIMUM_GENOME_SIZE - child_genome.len();
+            child_genome.extend(std::iter::repeat(Instruction::NopC).take(missing));
+            padded = true;
+            crate::debug::log_event(format!(
+                "[PAD] Child genome size {} below minimum {}, padded with {} nop-c",
+                size_before_mutations, MINIMUM_GENOME_SIZE, missing
+            ));
+        }
+
         let final_size = child_genome.len();
 
         // Create offspring
@@ -307,7 +320,7 @@ impl Organism {
         // Log first few divisions and every 10th
         if divisions < 5 || divisions % 10 == 0 {
             crate::debug::log_event(format!(
-                "[DIVIDE #{}] gen:{}->{} parent_size:{} copied:{} final:{} (ins:{} del:{}) parent_merit:{:.1} child_merit:{:.1} gestation:{}",
+                "[DIVIDE #{}] gen:{}->{} parent_size:{} copied:{} final:{} (ins:{} del:{}) parent_merit:{:.1} child_merit:{:.1} gestation:{}{}",
                 divisions,
                 self.generation,
                 offspring.generation,
@@ -318,7 +331,8 @@ impl Organism {
                 deletions,
                 self.merit,
                 offspring.merit,
-                self.gestation_cycles
+                self.gestation_cycles,
+                if padded { " padded" } else { "" }
             ));
         }
 
@@ -486,6 +500,32 @@ mod tests {
         assert_eq!(offspring.genome, original_genome);
         assert!(org.child_genome.is_none());
         assert_eq!(org.child_copy_progress, 0);
+    }
+
+    #[test]
+    fn test_divide_pads_small_genomes_to_minimum() {
+        use crate::instruction::parse_genome;
+
+        let genome = parse_genome("rtsd").expect("valid minimal genome");
+        let mut org = Organism::new(genome);
+
+        org.allocate_child();
+        let genome_len = org.genome_size();
+        for _ in 0..genome_len {
+            org.copy_instruction(0.0);
+        }
+
+        let offspring = org.divide(0.0, 0.0).expect("offspring should be produced");
+        assert!(
+            offspring.genome_size() >= MINIMUM_GENOME_SIZE,
+            "offspring genome too small: {}",
+            offspring.genome_size()
+        );
+        assert!(offspring
+            .genome
+            .iter()
+            .skip(genome_len)
+            .all(|inst| *inst == Instruction::NopC));
     }
 
     #[test]

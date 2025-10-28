@@ -718,6 +718,22 @@ mod tests {
     }
 
     #[test]
+    fn test_average_genome_size_after_long_run() {
+        let mut world = World::new();
+        world.inject_ancestor();
+
+        for _ in 0..5000 {
+            world.update();
+        }
+
+        assert!(
+            world.average_genome_size() > 15.0,
+            "Average genome size dropped to {:.2} after 5000 updates",
+            world.average_genome_size()
+        );
+    }
+
+    #[test]
     fn test_world_default() {
         let world = World::default();
         assert_eq!(world.dimensions(), (60, 60));
