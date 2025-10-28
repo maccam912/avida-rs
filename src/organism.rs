@@ -575,7 +575,10 @@ mod tests {
         assert_eq!(org.cpu.read_head, 0);
         assert_eq!(org.cpu.write_head, 0);
 
-        let child = org.child_genome.as_ref().expect("child should remain allocated");
+        let child = org
+            .child_genome
+            .as_ref()
+            .expect("child should remain allocated");
         assert_eq!(child.len(), org.genome.len());
         assert!(child.iter().all(|inst| *inst == Instruction::NopA));
     }

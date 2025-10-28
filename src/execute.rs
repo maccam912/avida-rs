@@ -414,7 +414,11 @@ mod tests {
 
     #[test]
     fn test_instruction_counter_increments() {
-        let mut org = Organism::new(vec![Instruction::NopA, Instruction::NopB, Instruction::NopC]);
+        let mut org = Organism::new(vec![
+            Instruction::NopA,
+            Instruction::NopB,
+            Instruction::NopC,
+        ]);
         let mut detector = TaskDetector::new();
 
         assert_eq!(org.instruction_count, 0);
@@ -447,7 +451,10 @@ mod tests {
         for _ in 0..30 {
             let (should_divide, _) = execute_instruction(&mut org, &mut detector, 0.0);
             assert!(org.child_copy_progress < org.genome.len());
-            assert!(!should_divide, "minimal rts genome should not be able to divide");
+            assert!(
+                !should_divide,
+                "minimal rts genome should not be able to divide"
+            );
         }
     }
 }
