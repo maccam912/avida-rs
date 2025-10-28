@@ -294,9 +294,9 @@ impl World {
             // Check for age-based death (Avida DEATH_METHOD)
             if let Some(org) = &self.grid[idx] {
                 let should_die = match self.death_method {
-                    0 => false,                                                      // No age-based death
-                    1 => org.age() >= self.age_limit,                                // Fixed age limit
-                    2 => org.age() >= (org.genome.len() as u64 * self.age_limit),   // Age limit × genome length
+                    0 => false,                                                   // No age-based death
+                    1 => org.age() >= self.age_limit,                             // Fixed age limit
+                    2 => org.age() >= (org.genome.len() as u64 * self.age_limit), // Age limit × genome length
                     _ => false,
                 };
 
@@ -683,8 +683,11 @@ mod tests {
         // but should remain in a reasonable range around the ancestor size (50)
         for cell in &world.grid {
             if let Some(org) = cell {
-                assert!(org.genome_size() >= 40 && org.genome_size() <= 60,
-                    "Genome size {} outside expected range [40, 60]", org.genome_size());
+                assert!(
+                    org.genome_size() >= 40 && org.genome_size() <= 60,
+                    "Genome size {} outside expected range [40, 60]",
+                    org.genome_size()
+                );
             }
         }
     }
@@ -705,8 +708,11 @@ mod tests {
         // but should remain in a reasonable range around the ancestor size (50)
         for cell in &world.grid {
             if let Some(org) = cell {
-                assert!(org.genome_size() >= 40 && org.genome_size() <= 60,
-                    "Genome size {} outside expected range [40, 60]", org.genome_size());
+                assert!(
+                    org.genome_size() >= 40 && org.genome_size() <= 60,
+                    "Genome size {} outside expected range [40, 60]",
+                    org.genome_size()
+                );
             }
         }
     }
