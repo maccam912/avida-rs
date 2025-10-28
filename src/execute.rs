@@ -435,4 +435,19 @@ mod tests {
         execute_instruction(&mut org, &mut detector, 0.0);
         assert_eq!(org.gestation_cycles, 1);
     }
+
+    #[test]
+    fn test_minimal_rts_genome_does_not_signal_divide() {
+        use crate::instruction::parse_genome;
+
+        let genome = parse_genome("rts").expect("valid minimal genome");
+        let mut org = Organism::new(genome);
+        let mut detector = TaskDetector::new();
+
+        for _ in 0..30 {
+            let (should_divide, _) = execute_instruction(&mut org, &mut detector, 0.0);
+            assert!(org.child_copy_progress < org.genome.len());
+            assert!(!should_divide, "minimal rts genome should not be able to divide");
+        }
+    }
 }

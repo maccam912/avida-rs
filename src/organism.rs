@@ -119,15 +119,13 @@ impl Organism {
 
     /// Allocate memory for offspring (h-alloc instruction)
     pub fn allocate_child(&mut self) {
+        let child_size = self.genome.len();
         if self.child_genome.is_some() {
             crate::debug::log_event(format!(
-                "[WARN] h-alloc called but child already exists (gen:{}, cycles:{}, ip:{})",
+                "[WARN] h-alloc reinitialized child (gen:{}, cycles:{}, ip:{})",
                 self.generation, self.instruction_count, self.cpu.ip
             ));
-            return;
         }
-
-        let child_size = self.genome.len();
         // Initialize with nop-A instructions
         self.child_genome = Some(vec![Instruction::NopA; child_size]);
 
@@ -557,6 +555,29 @@ mod tests {
         assert_eq!(org.child_copy_progress, 1);
         org.copy_instruction(0.0);
         assert_eq!(org.child_copy_progress, 2);
+    }
+
+    #[test]
+    fn test_reallocating_child_resets_progress() {
+        let mut org = Organism::ancestor();
+        org.allocate_child();
+        assert!(org.child_genome.is_some());
+
+        // Perform a copy to advance progress and modify child contents
+        org.copy_instruction(0.0);
+        assert_eq!(org.child_copy_progress, 1);
+        assert_eq!(org.cpu.read_head, 1);
+        assert_eq!(org.cpu.write_head, 1);
+
+        org.allocate_child();
+
+        assert_eq!(org.child_copy_progress, 0);
+        assert_eq!(org.cpu.read_head, 0);
+        assert_eq!(org.cpu.write_head, 0);
+
+        let child = org.child_genome.as_ref().expect("child should remain allocated");
+        assert_eq!(child.len(), org.genome.len());
+        assert!(child.iter().all(|inst| *inst == Instruction::NopA));
     }
 
     #[test]
